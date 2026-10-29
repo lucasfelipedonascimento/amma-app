@@ -11,6 +11,6 @@
     "android": {
       "package": "br.org.amma.app"
     },
-    "plugins": ["expo-status-bar"]
+    "plugins": ["expo-status-bar", "expo-secure-store"]
   }
 }

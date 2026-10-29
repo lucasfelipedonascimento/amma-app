@@ -5,11 +5,11 @@
 ```
 amma-app/
 ├── apps/
-│   ├── api/       NestJS + Prisma (PostgreSQL/PostGIS). Rota GET /health
+│   ├── api/       NestJS + Prisma (PostgreSQL/PostGIS): auth, account, driver, admin, legal
 │   ├── mobile/    Expo + React Native
 │   └── admin/     Next.js (reservado, etapa futura)
 ├── packages/
-│   └── shared/    @amma/shared: tipos, marca, regras de negócio (dinheiro em centavos)
+│   └── shared/    @amma/shared: marca, preço, taxas, cotas, ledger, validadores, estados da corrida
 ├── scripts/       check-imports.mjs (regra de importação)
 ├── .github/workflows/  ci-*.yml e deploy-*.yml, um par por app
 ├── docker-compose.yml  Postgres+PostGIS e Redis locais

@@ -11,10 +11,31 @@ datasource db {
 }
 
 enum Role {
-  PASSENGER
-  WORKER
-  MERCHANT
+  PASSAGEIRO
+  MOTORISTA // cobre entregador e motorista
+  COMERCIANTE
   ADMIN
+}
+
+enum VehicleType {
+  MOTO
+  CARRO
+}
+
+enum DocumentType {
+  CNH
+  DOCUMENTO_VEICULO
+  FOTO
+}
+
+enum ApprovalStatus {
+  PENDENTE
+  APROVADO
+  REPROVADO
+}
+
+enum ConsentType {
+  POLITICA_PRIVACIDADE
 }
 
 enum RideType {
@@ -34,18 +55,110 @@ enum RideStatus {
 }
 
 model User {
-  id           String   @id @default(uuid())
-  email        String   @unique
-  passwordHash String
-  name         String
-  // Uma pessoa pode ter mais de um perfil (ex.: passageiro e motorista).
-  roles        Role[]
-  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+  id        String    @id @default(uuid())
+  // E.164 (+55...). Vira null quando a conta é excluída (anonimização, LGPD).
+  phone     String?   @unique
+  name      String?
+  // Uma pessoa pode ter mais de um perfil. ADMIN só é atribuído manualmente.
+  roles     Role[]
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+  // Exclusão de conta = anonimização; registros financeiros são mantidos sem identificação.
+  deletedAt DateTime? @db.Timestamptz(3)
 
   quotaAccount  QuotaAccount?
   quotaEntries  QuotaEntry[]
-  ridesAsClient Ride[]        @relation("RideClient")
-  ridesAsWorker Ride[]        @relation("RideWorker")
+  ridesAsClient Ride[]         @relation("RideClient")
+  ridesAsWorker Ride[]         @relation("RideWorker")
+  refreshTokens RefreshToken[]
+  consents      Consent[]
+  driverProfile DriverProfile?
+  vehicles      Vehicle[]
+  documents     Document[]     @relation("DocumentOwner")
+  reviewedDocs  Document[]     @relation("DocumentReviewer")
+}
+
+// Código de uso único enviado por SMS. Só o hash é guardado.
+model OtpCode {
+  id         String    @id @default(uuid())
+  phone      String
+  codeHash   String
+  expiresAt  DateTime  @db.Timestamptz(3)
+  attempts   Int       @default(0)
+  consumedAt DateTime? @db.Timestamptz(3)
+  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
+
+  @@index([phone, createdAt])
+}
+
+// Refresh token opaco, com rotação. Só o hash é guardado.
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime  @db.Timestamptz(3)
+  revokedAt DateTime? @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// Consentimento LGPD: qual texto (versão) o usuário aceitou e quando.
+model Consent {
+  id         String      @id @default(uuid())
+  userId     String
+  type       ConsentType
+  version    String
+  acceptedAt DateTime    @default(now()) @db.Timestamptz(3)
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model DriverProfile {
+  userId    String   @id
+  fullName  String
+  cpf       String   @unique
+  birthDate DateTime @db.Date
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Vehicle {
+  id        String      @id @default(uuid())
+  userId    String
+  type      VehicleType
+  plate     String
+  model     String
+  year      Int
+  createdAt DateTime    @default(now()) @db.Timestamptz(3)
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  documents Document[]
+
+  @@unique([userId, plate])
+}
+
+// Cada envio é um registro novo; vale o mais recente de cada tipo.
+model Document {
+  id              String         @id @default(uuid())
+  userId          String
+  vehicleId       String?
+  type            DocumentType
+  // Chave do arquivo no armazenamento (disco local em dev; bucket em produção).
+  storageKey      String
+  mimeType        String
+  sizeBytes       Int
+  status          ApprovalStatus @default(PENDENTE)
+  rejectionReason String?
+  reviewedById    String?
+  reviewedAt      DateTime?      @db.Timestamptz(3)
+  createdAt       DateTime       @default(now()) @db.Timestamptz(3)
+  user            User           @relation("DocumentOwner", fields: [userId], references: [id], onDelete: Cascade)
+  vehicle         Vehicle?       @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  reviewedBy      User?          @relation("DocumentReviewer", fields: [reviewedById], references: [id])
+
+  @@index([userId, type])
+  @@index([status])
 }
 
 model Ride {

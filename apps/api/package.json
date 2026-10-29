@@ -10,7 +10,9 @@
     "lint": "eslint src",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "dotenv -e ../../.env -- prisma migrate dev",
-    "prisma:deploy": "dotenv -e ../../.env -- prisma migrate deploy"
+    "prisma:deploy": "dotenv -e ../../.env -- prisma migrate deploy",
+    "db:seed": "dotenv -e ../../.env -- tsx prisma/seed.ts",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "@amma/shared": "workspace:*",
@@ -27,9 +29,11 @@
     "rxjs": "^7.8.2"
   },
   "devDependencies": {
+    "@types/multer": "^2.3.0",
     "@types/node": "catalog:",
     "dotenv-cli": "^11.1.0",
     "prisma": "^6.19.0",
+    "tsx": "^4.23.15",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }

@@ -1,9 +1,15 @@
-import { RIDE_STATUSES } from '@amma/shared';
-import { RideStatus } from '@prisma/client';
+import { APPROVAL_STATUSES, DOCUMENT_TYPES, RIDE_STATUSES, ROLES } from '@amma/shared';
+import { ApprovalStatus, DocumentType, RideStatus, Role } from '@prisma/client';
 import { describe, expect, it } from 'vitest';
 
-describe('enum RideStatus', () => {
-  it('Prisma e packages/shared têm exatamente os mesmos estados', () => {
-    expect(Object.keys(RideStatus).sort()).toEqual([...RIDE_STATUSES].sort());
+// Enums do banco e do shared não podem divergir.
+describe('enums Prisma x shared', () => {
+  it.each([
+    ['RideStatus', RideStatus, RIDE_STATUSES],
+    ['Role', Role, ROLES],
+    ['ApprovalStatus', ApprovalStatus, APPROVAL_STATUSES],
+    ['DocumentType', DocumentType, DOCUMENT_TYPES],
+  ])('%s', (_name, prismaEnum, shared) => {
+    expect(Object.keys(prismaEnum).sort()).toEqual([...shared].sort());
   });
 });

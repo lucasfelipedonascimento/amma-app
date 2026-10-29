@@ -27,3 +27,35 @@ describe('calculateRideFees', () => {
     expect(() => calculateRideFees(1000, 3 as never)).toThrow();
   });
 });
+
+describe('calculateRideFees — casos de borda', () => {
+  it('R$ 11,00 com 2% => trabalhador R$ 9,68', () => {
+    const f = calculateRideFees(1100, 2);
+    expect(f.platformFeeCents).toBe(110);
+    expect(f.associationFeeCents).toBe(22);
+    expect(f.workerNetCents).toBe(968);
+  });
+  it('corrida de 1 centavo: taxas arredondam para 0 e o trabalhador fica com tudo', () => {
+    expect(calculateRideFees(1, 4)).toEqual({
+      grossCents: 1,
+      platformFeeCents: 0,
+      associationFeeCents: 0,
+      workerNetCents: 1,
+    });
+  });
+  it('corrida zerada é permitida e tudo é zero', () => {
+    expect(calculateRideFees(0, 4).workerNetCents).toBe(0);
+  });
+  it('valores grandes não perdem precisão', () => {
+    const f = calculateRideFees(99_999_999, 4);
+    expect(f.platformFeeCents + f.associationFeeCents + f.workerNetCents).toBe(99_999_999);
+  });
+  it('a soma sempre fecha com o bruto (varredura)', () => {
+    for (let g = 0; g <= 2000; g += 7)
+      for (const r of [0, 2, 4] as const) {
+        const f = calculateRideFees(g, r);
+        expect(f.platformFeeCents + f.associationFeeCents + f.workerNetCents).toBe(g);
+        expect(f.workerNetCents).toBeGreaterThanOrEqual(0);
+      }
+  });
+});

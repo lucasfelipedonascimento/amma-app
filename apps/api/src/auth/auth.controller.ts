@@ -1,33 +1,32 @@
-import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
-import { PrismaService } from '../prisma.service';
-import { AuthGuard, AuthPayload } from './auth.guard';
+import { Body, Controller, HttpCode, Post } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { LoginDto, RegisterDto } from './dto';
+import { RefreshDto, RequestOtpDto, VerifyOtpDto } from './dto';
 
 @Controller('auth')
 export class AuthController {
-  constructor(
-    private readonly auth: AuthService,
-    private readonly prisma: PrismaService,
-  ) {}
+  constructor(private readonly auth: AuthService) {}
 
-  @Post('register')
-  register(@Body() dto: RegisterDto) {
-    return this.auth.register(dto);
+  @Post('otp/request')
+  @HttpCode(200)
+  requestOtp(@Body() dto: RequestOtpDto) {
+    return this.auth.requestOtp(dto.phone);
   }
 
-  @Post('login')
-  login(@Body() dto: LoginDto) {
-    return this.auth.login(dto);
+  @Post('otp/verify')
+  @HttpCode(200)
+  verifyOtp(@Body() dto: VerifyOtpDto) {
+    return this.auth.verifyOtp(dto.phone, dto.code);
   }
 
-  @Get('me')
-  @UseGuards(AuthGuard)
-  async me(@Req() req: { auth: AuthPayload }) {
-    const { id, email, name, roles, quotaAccount } = await this.prisma.user.findUniqueOrThrow({
-      where: { id: req.auth.sub },
-      include: { quotaAccount: true },
-    });
-    return { id, email, name, roles, quotaAccount };
+  @Post('refresh')
+  @HttpCode(200)
+  refresh(@Body() dto: RefreshDto) {
+    return this.auth.refresh(dto.refreshToken);
+  }
+
+  @Post('logout')
+  @HttpCode(204)
+  async logout(@Body() dto: RefreshDto) {
+    await this.auth.logout(dto.refreshToken);
   }
 }

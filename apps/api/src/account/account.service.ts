@@ -1,0 +1,74 @@
+import { BadRequestException, Injectable } from '@nestjs/common';
+import { StorageService } from '../common/storage.service';
+import { PRIVACY_POLICY_VERSION } from '../legal/privacy-policy';
+import { PrismaService } from '../prisma.service';
+import { OnboardingDto } from './dto';
+
+@Injectable()
+export class AccountService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly storage: StorageService,
+  ) {}
+
+  async me(userId: string) {
+    const u = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      include: { quotaAccount: true },
+    });
+    return {
+      id: u.id,
+      phone: u.phone,
+      name: u.name,
+      roles: u.roles,
+      quotaAccount: u.quotaAccount,
+      needsOnboarding: u.roles.length === 0,
+    };
+  }
+
+  async onboarding(userId: string, dto: OnboardingDto) {
+    if (dto.policyVersion !== PRIVACY_POLICY_VERSION) {
+      throw new BadRequestException(
+        'Versão da política desatualizada. Recarregue e leia novamente.',
+      );
+    }
+    const current = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    // ADMIN nunca sai por aqui, mas também nunca é removido de quem já é admin.
+    const roles = [
+      ...new Set([...dto.roles, ...(current.roles.includes('ADMIN') ? ['ADMIN' as const] : [])]),
+    ];
+    await this.prisma.$transaction([
+      this.prisma.user.update({ where: { id: userId }, data: { name: dto.name.trim(), roles } }),
+      this.prisma.consent.create({
+        data: { userId, type: 'POLITICA_PRIVACIDADE', version: dto.policyVersion },
+      }),
+    ]);
+    return this.me(userId);
+  }
+
+  /**
+   * Exclusão de conta (LGPD): apaga dados pessoais, documentos e sessões e anonimiza o usuário.
+   * Corridas e lançamentos financeiros ficam, sem identificação (obrigação legal/contábil).
+   */
+  async deleteAccount(userId: string) {
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    const docs = await this.prisma.document.findMany({
+      where: { userId },
+      select: { storageKey: true },
+    });
+    await this.prisma.$transaction([
+      this.prisma.document.deleteMany({ where: { userId } }),
+      this.prisma.vehicle.deleteMany({ where: { userId } }),
+      this.prisma.driverProfile.deleteMany({ where: { userId } }),
+      this.prisma.refreshToken.deleteMany({ where: { userId } }),
+      this.prisma.consent.deleteMany({ where: { userId } }),
+      ...(user.phone ? [this.prisma.otpCode.deleteMany({ where: { phone: user.phone } })] : []),
+      this.prisma.user.update({
+        where: { id: userId },
+        data: { phone: null, name: null, roles: [], deletedAt: new Date() },
+      }),
+    ]);
+    // Arquivos só depois do banco confirmar.
+    await Promise.all(docs.map((d) => this.storage.remove(d.storageKey)));
+  }
+}

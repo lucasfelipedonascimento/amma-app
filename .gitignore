@@ -5,3 +5,4 @@ dist
 .expo
 .env
 *.log
+uploads

@@ -3,4 +3,8 @@ export * from './money';
 export * from './fees';
 export * from './quotas';
 export * from './pricing';
+export * from './ledger';
 export * from './ride-state';
+export * from './validators';
+export * from './driver-approval';
+export * from './roles';
