@@ -31,3 +31,26 @@ pnpm --filter @amma/mobile dev    # Expo
 - Etapa 2: regras de negócio em `shared` (taxas, cotas, níveis, piso km/min, estados da corrida) com testes.
 - Modelos Prisma e migrações; autenticação.
 - Fonte Outfit no mobile; admin; destino real de deploy; repositório git ainda não inicializado.
+
+## Etapa 2 — Regras de negócio em `packages/shared` ✅
+
+**Feito** (funções puras, 25 testes):
+
+- `fees.ts`: taxa base 10% + associação 0/2/4%, líquido do trabalhador.
+- `quotas.ts`: 1 cota = R$ 5, acúmulo de resto, níveis Bronze/Prata/Ouro.
+- `pricing.ts`: piso por km/min (`minimumFare`) e `applyFloor`.
+- `ride-state.ts`: máquina de estados da corrida/entrega.
+
+**Como testar**
+
+```
+pnpm --filter @amma/shared test
+pnpm test && pnpm lint && pnpm typecheck
+```
+
+**Falta / a confirmar**
+
+- Valores reais do piso por km e por minuto.
+- Se a taxa de associação incide sobre o bruto (atual) ou o líquido.
+- Regras de cancelamento (multa/tolerância).
+- Próxima etapa: modelos Prisma (usuários, perfis, corridas, cotas), migrações e autenticação.
