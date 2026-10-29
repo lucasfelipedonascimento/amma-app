@@ -1,0 +1,19 @@
+name: Deploy api
+# Esqueleto: o destino do deploy ainda não foi decidido (ver docs/DECISOES.md).
+# Só dispara quando mudam pastas relevantes ao api.
+on:
+  push:
+    branches: [main]
+    paths: ['apps/api/**', 'packages/shared/**']
+  workflow_dispatch:
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm turbo run build --filter=@amma/api...
+      - run: echo "TODO deploy do api (segredos virão de GitHub Secrets)"

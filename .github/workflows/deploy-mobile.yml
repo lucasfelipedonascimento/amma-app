@@ -1,0 +1,19 @@
+name: Deploy mobile
+# Esqueleto: o destino do deploy ainda não foi decidido (ver docs/DECISOES.md).
+# Só dispara quando mudam pastas relevantes ao mobile.
+on:
+  push:
+    branches: [main]
+    paths: ['apps/mobile/**', 'packages/shared/**']
+  workflow_dispatch:
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm turbo run build --filter=@amma/mobile...
+      - run: echo "TODO deploy do mobile (segredos virão de GitHub Secrets)"

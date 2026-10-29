@@ -1,0 +1,12 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+
+# Versões comuns num lugar só. Nos package.json dos pacotes use "catalog:".
+catalog:
+  typescript: ~5.9.3
+  vitest: ^3.2.4
+  eslint: ^9.39.0
+  typescript-eslint: ^8.46.0
+  prettier: ^3.6.2
+  '@types/node': ^20.19.0

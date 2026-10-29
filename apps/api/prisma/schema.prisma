@@ -1,0 +1,11 @@
+// Modelos de dados entram nas próximas etapas. Por ora só conexão + extensão PostGIS.
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [postgis]
+}

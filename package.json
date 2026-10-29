@@ -1,0 +1,27 @@
+{
+  "name": "amma",
+  "private": true,
+  "packageManager": "pnpm@9.15.9",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "test": "turbo run test",
+    "lint": "turbo run lint && pnpm check:imports",
+    "typecheck": "turbo run typecheck",
+    "check:imports": "node scripts/check-imports.mjs",
+    "format": "prettier --write .",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "eslint": "catalog:",
+    "prettier": "catalog:",
+    "turbo": "^2.5.0",
+    "typescript": "catalog:",
+    "typescript-eslint": "catalog:"
+  }
+}

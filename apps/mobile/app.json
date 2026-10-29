@@ -1,0 +1,16 @@
+{
+  "expo": {
+    "name": "AMMA",
+    "slug": "amma",
+    "version": "0.0.0",
+    "orientation": "portrait",
+    "backgroundColor": "#1e1a18",
+    "ios": {
+      "bundleIdentifier": "br.org.amma.app"
+    },
+    "android": {
+      "package": "br.org.amma.app"
+    },
+    "plugins": ["expo-status-bar"]
+  }
+}
