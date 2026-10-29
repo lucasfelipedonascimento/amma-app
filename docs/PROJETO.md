@@ -69,3 +69,4 @@ Convenções: dinheiro **sempre em centavos (inteiros)**; datas em **UTC**.
 5. Não inventar dados, chaves ou integrações: usar variáveis de ambiente e modo sandbox/simulado.
 6. Código simples, comentado onde a regra não for óbvia.
 7. Respeitar as regras de importação entre apps e manter `docs/ARQUITETURA.md` atualizado quando a estrutura mudar.
+8. No fim de cada etapa, entregar também uma **descrição pronta para commit** (título + corpo curto, em português). Quem commita é o usuário.

@@ -1,11 +1,107 @@
-// Modelos de dados entram nas próximas etapas. Por ora só conexão + extensão PostGIS.
+// PostGIS é criado por SQL na migração 0_init (não por "extensions"), pois a imagem do
+// Docker já traz extensões extras que o Prisma trataria como divergência e pediria reset.
+// Dinheiro sempre em centavos (Int). Datas em UTC (timestamptz).
 generator client {
-  provider        = "prisma-client-js"
-  previewFeatures = ["postgresqlExtensions"]
+  provider = "prisma-client-js"
 }
 
 datasource db {
-  provider   = "postgresql"
-  url        = env("DATABASE_URL")
-  extensions = [postgis]
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  PASSENGER
+  WORKER
+  MERCHANT
+  ADMIN
+}
+
+enum RideType {
+  RIDE
+  DELIVERY
+}
+
+// Deve ficar idêntico a RIDE_STATUSES em packages/shared (há teste que confere).
+enum RideStatus {
+  REQUESTED
+  ACCEPTED
+  ARRIVED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  EXPIRED
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  // Uma pessoa pode ter mais de um perfil (ex.: passageiro e motorista).
+  roles        Role[]
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+
+  quotaAccount  QuotaAccount?
+  quotaEntries  QuotaEntry[]
+  ridesAsClient Ride[]        @relation("RideClient")
+  ridesAsWorker Ride[]        @relation("RideWorker")
+}
+
+model Ride {
+  id       String     @id @default(uuid())
+  type     RideType
+  status   RideStatus @default(REQUESTED)
+  clientId String
+  workerId String?
+
+  // Lat/lng simples por ora; colunas PostGIS entram junto com a busca por proximidade.
+  pickupLat  Float
+  pickupLng  Float
+  dropoffLat Float
+  dropoffLng Float
+
+  distanceMeters  Int
+  durationSeconds Int
+
+  // Valores calculados por packages/shared (centavos). Congelados na conclusão.
+  grossCents          Int
+  platformFeeCents    Int @default(0)
+  associationFeeCents Int @default(0)
+  workerNetCents      Int @default(0)
+  associationRate     Int @default(0) // 0, 2 ou 4
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  client       User         @relation("RideClient", fields: [clientId], references: [id])
+  worker       User?        @relation("RideWorker", fields: [workerId], references: [id])
+  quotaEntries QuotaEntry[]
+
+  @@index([clientId])
+  @@index([workerId])
+  @@index([status])
+}
+
+// Saldo contábil de cotas (não é dinheiro em custódia).
+model QuotaAccount {
+  userId         String @id
+  quotas         Int    @default(0)
+  remainderCents Int    @default(0) // fração de cota (< 500)
+  user           User   @relation(fields: [userId], references: [id])
+}
+
+// Extrato: cada taxa de associação que virou cotas.
+model QuotaEntry {
+  id          String   @id @default(uuid())
+  userId      String
+  rideId      String?
+  feeCents    Int
+  quotasAdded Int
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  user User  @relation(fields: [userId], references: [id])
+  ride Ride? @relation(fields: [rideId], references: [id])
+
+  @@index([userId])
 }

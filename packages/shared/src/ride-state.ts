@@ -2,8 +2,16 @@
  * Estados da corrida (também usados nas entregas: ARRIVED = chegou à coleta,
  * IN_PROGRESS = a caminho do destino).
  */
-export type RideStatus =
-  'REQUESTED' | 'ACCEPTED' | 'ARRIVED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED' | 'EXPIRED';
+export const RIDE_STATUSES = [
+  'REQUESTED',
+  'ACCEPTED',
+  'ARRIVED',
+  'IN_PROGRESS',
+  'COMPLETED',
+  'CANCELLED',
+  'EXPIRED',
+] as const;
+export type RideStatus = (typeof RIDE_STATUSES)[number];
 
 // Cancelamento só até ARRIVED; depois de iniciada, só conclui. EXPIRED = ninguém aceitou.
 const TRANSITIONS: Record<RideStatus, readonly RideStatus[]> = {

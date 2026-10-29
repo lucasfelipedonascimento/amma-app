@@ -54,3 +54,29 @@ pnpm test && pnpm lint && pnpm typecheck
 - Se a taxa de associação incide sobre o bruto (atual) ou o líquido.
 - Regras de cancelamento (multa/tolerância).
 - Próxima etapa: modelos Prisma (usuários, perfis, corridas, cotas), migrações e autenticação.
+
+## Etapa 3 — Banco e autenticação ✅
+
+**Feito**
+
+- Schema Prisma: `User` (com papéis), `Ride` (corrida/entrega com valores em centavos), `QuotaAccount`, `QuotaEntry`. Migração `init` (inclui PostGIS).
+- Auth: `POST /auth/register`, `POST /auth/login`, `GET /auth/me` (Bearer JWT). Validação de DTOs, ADMIN bloqueado no cadastro.
+- Testes: 3 do `AuthService` + 1 de consistência de enum (Prisma x shared). Verificado manualmente contra o Postgres real.
+
+**Como rodar**
+
+```
+pnpm db:up
+cd apps/api && pnpm prisma:migrate     # aplica migrações (usa ../../.env)
+cd ../.. && pnpm build
+API_PORT=3000 node apps/api/dist/main.js
+curl -X POST localhost:3000/auth/register -H 'content-type: application/json' \
+  -d '{"email":"voce@exemplo.com","password":"senha12345","name":"Você","roles":["WORKER"]}'
+```
+
+`JWT_SECRET` é obrigatório no `.env` (gere com `openssl rand -hex 32`).
+
+**Falta**
+
+- Criar corrida/entrega (endpoints), fluxo de estados e fechamento financeiro (taxas + cotas) usando o `shared`.
+- WebSocket, busca por proximidade (PostGIS), refresh token, recuperação de senha, rate limit no login.
