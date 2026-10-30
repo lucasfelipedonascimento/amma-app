@@ -431,7 +431,7 @@ Admin do seed `+5583999990001`; sócio `+5583999990003` (o código aparece na te
 - Matriz de testes IDOR/BOLA (`test/authz-fraud.int.test.ts`, 22 testes): sem IDOR nem escalada de privilégio encontrados.
 - Corrigido: concluir entrega/corrida sem estar no destino (A2; agora exige até 300 m e posição recente do servidor) e auto-atendimento do próprio pedido por quem tem os dois papéis (A1). Ambas reproduzidas com teste antes da correção.
 - Testes antigos que concluíam sem posição foram ajustados (helper `t.atDropoff`). Total: 389 de integração, 77 unitários na API, 286 no shared; lint e typecheck limpos.
-- **Para o app do motorista:** `delivered` pode responder `409` com `TOO_FAR_FROM_DROPOFF`/`POSITION_UNKNOWN` (a mensagem em português já vem pronta e o app a exibe). Falta um tratamento dedicado na tela (ex.: botão "Estou aqui" desabilitado longe do destino).
+- **Para o app do motorista:** `delivered` pode responder `409` com `TOO_FAR_FROM_DROPOFF`/`POSITION_UNKNOWN` (a mensagem em português já vem pronta e o app a exibe). Tratado no app (2026-10-30): longe do destino a tela mostra a distância e desabilita "Confirmar entrega"; sem GPS o botão fica liberado e o servidor decide.
 
 **Parte 3 — WebSocket, localização, arquivos e LGPD ✅ (2026-10-30)**
 

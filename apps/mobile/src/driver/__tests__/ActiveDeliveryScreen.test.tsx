@@ -54,6 +54,28 @@ describe('Entrega em andamento', () => {
     expect(advance).toHaveBeenCalledTimes(1);
   });
 
+  it('longe do destino avisa a distância e não deixa concluir', async () => {
+    const advance = jest.fn(async () => undefined);
+    await renderScreen('A_CAMINHO_ENTREGA', {
+      advance,
+      position: { lat: -7.115, lng: -34.861 }, // ~2,2 km do destino
+    });
+    expect(screen.getByText(/Chegue a até 300 m para concluir/)).toBeTruthy();
+    await fireEvent.press(screen.getByText('Confirmar entrega'));
+    expect(advance).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['perto do destino', { lat: -7.0951, lng: -34.861 }], // ~11 m
+    ['sem posição (o servidor decide)', null],
+  ])('%s deixa concluir', async (_n, position) => {
+    const advance = jest.fn(async () => undefined);
+    await renderScreen('A_CAMINHO_ENTREGA', { advance, position });
+    expect(screen.queryByText(/Chegue a até/)).toBeNull();
+    await fireEvent.press(screen.getByText('Confirmar entrega'));
+    expect(advance).toHaveBeenCalledTimes(1);
+  });
+
   it('depois de coletar o destino é a entrega', async () => {
     mockRoute.mockReturnValue({
       route: { ...route, target: 'ENTREGA', destination: active.dropoff },

@@ -1,6 +1,12 @@
 import { useState } from 'react';
 import { Alert, Linking, StyleSheet, Text, View } from 'react-native';
-import { BOARDING_PIN_LENGTH, formatBRL, isValidBoardingPin } from '@amma/shared';
+import {
+  BOARDING_PIN_LENGTH,
+  MAX_COMPLETION_DISTANCE_METERS,
+  formatBRL,
+  haversineMeters,
+  isValidBoardingPin,
+} from '@amma/shared';
 import { colors } from '../../theme';
 import { Button, ErrorText, Field } from '../../ui';
 import { ReportCard } from '../../safety/ReportCard';
@@ -38,6 +44,10 @@ export function ActiveDeliveryScreen() {
   const place = target === 'COLETA' ? a.pickup : a.dropoff;
   const needsPin = ride && step?.reaches === 'COLETADO';
   const pinOk = !needsPin || isValidBoardingPin(pin);
+  // Só conforto: quem decide é o servidor (a posição que ele recebeu). Sem posição, deixa tentar.
+  const metersToDropoff =
+    step?.reaches === 'ENTREGUE' && d.position ? haversineMeters(d.position, a.dropoff) : null;
+  const tooFar = metersToDropoff !== null && metersToDropoff > MAX_COMPLETION_DISTANCE_METERS;
 
   const confirmRelease = () =>
     Alert.alert(
@@ -123,12 +133,17 @@ export function ActiveDeliveryScreen() {
         ) : null}
 
         <ErrorText message={d.actionError} />
+        {tooFar ? (
+          <WarnBanner
+            text={`Você está a ${formatDistance(metersToDropoff)} do destino. Chegue a até ${MAX_COMPLETION_DISTANCE_METERS} m para concluir.`}
+          />
+        ) : null}
         {step ? (
           <Button
             title={step.action}
             onPress={() => void (needsPin ? d.advance(pin) : d.advance())}
             loading={d.busy}
-            disabled={d.offline || !pinOk}
+            disabled={d.offline || !pinOk || tooFar}
           />
         ) : null}
         {canRelease(a.status) ? (
