@@ -98,8 +98,10 @@ describe('app do motorista: ganhos, rota, consentimento, push e posição', () =
       ).toBe(400);
       const other = await t.driver('Outra');
       expect((await t.get(`/driver/deliveries/${d.id}/route?${q}`, other.token)).status).toBe(404);
-      for (const step of ['en-route-pickup', 'picked-up', 'en-route-dropoff', 'delivered'])
+      for (const step of ['en-route-pickup', 'picked-up', 'en-route-dropoff', 'delivered']) {
+        if (step === 'delivered') await t.atDropoff(driver);
         await t.post(`/driver/deliveries/${d.id}/${step}`, driver.token);
+      }
       expect((await t.get(`/driver/deliveries/${d.id}/route?${q}`, driver.token)).status).toBe(409);
     });
   });

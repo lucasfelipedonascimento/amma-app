@@ -426,4 +426,11 @@ Admin do seed `+5583999990001`; sócio `+5583999990003` (o código aparece na te
 - Variáveis novas: `TRUST_PROXY`, `RATE_LIMIT_SCALE`. Em produção `JWT_SECRET` precisa de 32+ caracteres.
 - **Para quem usa a API:** ações críticas do admin agora respondem `403 REAUTH_REQUIRED` até `POST /auth/reauth/request` + `/verify`. Scripts/testes que chamam essas rotas precisam reautenticar (helper `t.admin()` já faz).
 
-**Próximas partes:** 2 (autorização/IDOR e fraude de corrida, incluindo a regra dos 300 m), 3 (WebSocket, localização, uploads, LGPD), 4 (infra, mobile, painel, dependências).
+**Parte 2 — autorização e fraude ✅ (2026-10-30)**
+
+- Matriz de testes IDOR/BOLA (`test/authz-fraud.int.test.ts`, 22 testes): sem IDOR nem escalada de privilégio encontrados.
+- Corrigido: concluir entrega/corrida sem estar no destino (A2; agora exige até 300 m e posição recente do servidor) e auto-atendimento do próprio pedido por quem tem os dois papéis (A1). Ambas reproduzidas com teste antes da correção.
+- Testes antigos que concluíam sem posição foram ajustados (helper `t.atDropoff`). Total: 389 de integração, 77 unitários na API, 286 no shared; lint e typecheck limpos.
+- **Para o app do motorista:** `delivered` pode responder `409` com `TOO_FAR_FROM_DROPOFF`/`POSITION_UNKNOWN` (a mensagem em português já vem pronta e o app a exibe). Falta um tratamento dedicado na tela (ex.: botão "Estou aqui" desabilitado longe do destino).
+
+**Próximas partes:** 3 (WebSocket, localização, uploads, LGPD), 4 (infra, mobile, painel, dependências).

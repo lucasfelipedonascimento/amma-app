@@ -26,6 +26,8 @@ import {
   buildReceipt,
   canCancel,
   canIssueReceipt,
+  MAX_COMPLETION_DISTANCE_METERS,
+  MAX_COMPLETION_POSITION_AGE_SECONDS,
   haversineMeters,
   refundAction,
   type AssociationRate,
@@ -433,6 +435,8 @@ export class DeliveryService {
     // Corrida: o embarque só é confirmado com o PIN que o passageiro mostra (verifica quem embarca).
     if (to === 'COLETADO' && d.kind === 'CORRIDA') await this.checkBoardingPin(d, pin);
 
+    if (to === 'ENTREGUE') await this.assertAtDropoff(driverId, d);
+
     const now = new Date();
     const ok = await this.prisma.$transaction(async (tx) => {
       if (to === 'ENTREGUE') return this.settle(tx, d, driverId, now);
@@ -449,6 +453,36 @@ export class DeliveryService {
     this.notify(d, to);
     const fresh = await this.prisma.delivery.findUniqueOrThrow({ where: { id } });
     return deliveryView(fresh, 'MOTORISTA', undefined, await this.extrasFor(fresh));
+  }
+
+  /**
+   * Presença na conclusão: a posição que o SERVIDOR recebeu do motorista (não um valor enviado nesta
+   * chamada) precisa ser recente e estar a até 300 m do destino. Sem posição, não conclui: o app
+   * envia posição continuamente, então a falta dela é sinal de problema (GPS desligado) ou de fraude.
+   * Saída para quem não consegue chegar: cancelar por `ENTREGA_IMPOSSIVEL`.
+   */
+  private async assertAtDropoff(
+    driverId: string,
+    d: { id: string; dropoffLat: number; dropoffLng: number },
+  ) {
+    const last = await this.presence.lastKnownPosition(driverId);
+    if (!last || last.ageSeconds > MAX_COMPLETION_POSITION_AGE_SECONDS)
+      throw new ConflictException({
+        statusCode: 409,
+        code: 'POSITION_UNKNOWN',
+        message: 'Não recebemos sua localização agora. Ative o GPS e tente de novo.',
+      });
+    const meters = haversineMeters(last.point, { lat: d.dropoffLat, lng: d.dropoffLng });
+    if (meters > MAX_COMPLETION_DISTANCE_METERS) {
+      this.logger.warn(`Conclusão recusada: pedido ${d.id} a ${meters} m do destino`);
+      throw new ConflictException({
+        statusCode: 409,
+        code: 'TOO_FAR_FROM_DROPOFF',
+        message: `Você está a ${meters} m do destino. Chegue a até ${MAX_COMPLETION_DISTANCE_METERS} m para concluir.`,
+        distanceMeters: meters,
+        maxMeters: MAX_COMPLETION_DISTANCE_METERS,
+      });
+    }
   }
 
   /**

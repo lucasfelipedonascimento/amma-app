@@ -66,6 +66,7 @@ describe('fluxo completo do pedido de entrega', () => {
       ['en-route-dropoff', 'A_CAMINHO_ENTREGA'],
       ['delivered', 'ENTREGUE'],
     ] as const) {
+      if (step === 'delivered') await t.atDropoff(driver);
       const r = await t.post(`/driver/deliveries/${id}/${step}`, driver.token);
       expect(r.status, step).toBe(200);
       expect(r.body.status).toBe(status);
@@ -180,8 +181,10 @@ describe('fluxo completo do pedido de entrega', () => {
     expect((await t.req('DELETE', '/me', driver.token)).status).toBe(409);
 
     const id = (await t.prisma.delivery.findFirstOrThrow()).id;
-    for (const s of ['en-route-pickup', 'picked-up', 'en-route-dropoff', 'delivered'])
+    for (const s of ['en-route-pickup', 'picked-up', 'en-route-dropoff', 'delivered']) {
+      if (s === 'delivered') await t.atDropoff(driver);
       await t.post(`/driver/deliveries/${id}/${s}`, driver.token);
+    }
     expect((await t.req('DELETE', '/me', driver.token)).status).toBe(204);
     expect(await t.prisma.driverPresence.count()).toBe(0);
     expect(await t.prisma.ledgerTransaction.count()).toBe(1); // financeiro permanece, sem identificação

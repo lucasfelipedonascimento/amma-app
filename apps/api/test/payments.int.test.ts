@@ -401,8 +401,10 @@ describe('pagamento, recibo, avaliação e comerciante', () => {
       );
       const offer = await t.currentOffer(driver);
       await t.post(`/driver/offers/${offer.id}/accept`, driver.token);
-      for (const s of ['en-route-pickup', 'picked-up', 'en-route-dropoff', 'delivered'])
+      for (const s of ['en-route-pickup', 'picked-up', 'en-route-dropoff', 'delivered']) {
+        if (s === 'delivered') await t.atDropoff(driver);
         await t.post(`/driver/deliveries/${d.id}/${s}`, driver.token);
+      }
 
       for (const stars of [0, 6, 2.5])
         expect((await t.post(`/deliveries/${d.id}/rating`, client.token, { stars })).status).toBe(

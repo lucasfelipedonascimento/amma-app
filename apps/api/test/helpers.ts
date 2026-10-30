@@ -136,6 +136,8 @@ export class TestApp {
     this.req('POST', path, token, body ?? {});
   request = (method: string, path: string, token?: string) => this.req(method, path, token);
   put = (path: string, token?: string, body?: unknown) => this.req('PUT', path, token, body);
+  patch = (path: string, token?: string, body?: unknown) => this.req('PATCH', path, token, body);
+  del = (path: string, token?: string) => this.req('DELETE', path, token);
 
   /** Login real por OTP simulado; depois define os papéis direto no banco. */
   async user(roles: ('PASSAGEIRO' | 'MOTORISTA' | 'COMERCIANTE' | 'ADMIN')[], name = 'Teste') {
@@ -297,8 +299,19 @@ export class TestApp {
       pin: ride.boardingPin,
     });
     await this.post(`/driver/deliveries/${ride.id}/en-route-dropoff`, driver.token);
+    await this.atDropoff(driver);
     await this.post(`/driver/deliveries/${ride.id}/delivered`, driver.token);
     return ride.id as string;
+  }
+
+  /** O aparelho do motorista informa a posição no destino (a conclusão exige estar a até 300 m). */
+  async atDropoff(driver: TestUser) {
+    const r = await this.post('/driver/position', driver.token, {
+      lat: DROPOFF.lat,
+      lng: DROPOFF.lng,
+    });
+    if (r.status !== 200 && r.status !== 201)
+      throw new Error(`posição falhou: ${r.status} ${JSON.stringify(r.body)}`);
   }
 
   async currentOffer(driver: TestUser) {
@@ -310,8 +323,10 @@ export class TestApp {
     const d = await this.createDelivery(client);
     const offer = await this.currentOffer(driver);
     await this.post(`/driver/offers/${offer.id}/accept`, driver.token);
-    for (const step of ['en-route-pickup', 'picked-up', 'en-route-dropoff', 'delivered'])
+    for (const step of ['en-route-pickup', 'picked-up', 'en-route-dropoff', 'delivered']) {
+      if (step === 'delivered') await this.atDropoff(driver);
       await this.post(`/driver/deliveries/${d.id}/${step}`, driver.token);
+    }
     return d.id as string;
   }
 

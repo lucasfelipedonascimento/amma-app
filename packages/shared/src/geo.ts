@@ -23,6 +23,15 @@ export const isValidPoint = (p: unknown): p is GeoPoint => {
 const EARTH_RADIUS_METERS = 6_371_008.8;
 const rad = (deg: number) => (deg * Math.PI) / 180;
 
+/**
+ * Distância máxima entre o motorista e o destino para concluir (`ENTREGUE`). Evita fechar corrida
+ * ou entrega sem ter ido ao local (fraude para gerar repasse, cotas e benefícios).
+ */
+export const MAX_COMPLETION_DISTANCE_METERS = 300;
+
+/** Idade máxima da última posição conhecida aceita para conferir a presença. */
+export const MAX_COMPLETION_POSITION_AGE_SECONDS = 120;
+
 /** Distância em linha reta (haversine), em metros inteiros. */
 export function haversineMeters(a: GeoPoint, b: GeoPoint): number {
   const dLat = rad(b.lat - a.lat);

@@ -102,6 +102,31 @@ export class PresenceService {
     }
   }
 
+  /**
+   * Última posição conhecida do motorista e há quantos segundos ela foi recebida. Redis primeiro; se
+   * ele não souber (caiu ou expirou), usa a última gravada no PostGIS. `null` se não há posição.
+   */
+  async lastKnownPosition(userId: string): Promise<{ point: GeoPoint; ageSeconds: number } | null> {
+    const hot = await this.store.get(userId);
+    if (hot) {
+      return {
+        point: { lat: hot.lat, lng: hot.lng },
+        ageSeconds: Math.max(0, (Date.now() - new Date(hot.at).getTime()) / 1000),
+      };
+    }
+    const rows = await this.prisma.$queryRaw<{ lat: number; lng: number; at: Date }[]>`
+      SELECT ST_Y(location::geometry)::float8 AS lat, ST_X(location::geometry)::float8 AS lng,
+             "locationAt" AS at
+      FROM "DriverPresence"
+      WHERE "userId" = ${userId} AND online = true AND location IS NOT NULL AND "locationAt" IS NOT NULL`;
+    const r = rows[0];
+    if (!r) return null;
+    return {
+      point: { lat: r.lat, lng: r.lng },
+      ageSeconds: Math.max(0, (Date.now() - r.at.getTime()) / 1000),
+    };
+  }
+
   async status(userId: string) {
     const row = await this.prisma.driverPresence.findUnique({ where: { userId } });
     const position = row?.online ? await this.store.get(userId) : null;

@@ -235,7 +235,7 @@ export class DispatchService {
 
   /** Motoristas online com posição, dentro do raio, do mais perto ao mais longe. */
   private candidates(
-    delivery: Pick<Delivery, 'id' | 'pickupLat' | 'pickupLng'>,
+    delivery: Pick<Delivery, 'id' | 'pickupLat' | 'pickupLng'> & { clientId?: string },
     config: DispatchConfig,
   ): Promise<CandidateRow[]> {
     return this.prisma.$queryRaw<CandidateRow[]>`
@@ -255,6 +255,7 @@ export class DispatchService {
            (SELECT ST_SetSRID(ST_MakePoint(${delivery.pickupLng}, ${delivery.pickupLat}), 4326)::geography AS pt) q
       WHERE p.online = true AND p.location IS NOT NULL AND p."locationAt" IS NOT NULL
         AND ST_DWithin(p.location, q.pt, ${config.radiusMeters})
+        AND p."userId" <> ${delivery.clientId ?? ''}
       ORDER BY distance ASC
       LIMIT ${MAX_CANDIDATES}`;
   }
@@ -404,6 +405,8 @@ export class DispatchService {
         id: offer.deliveryId,
         from: 'OFERECIDO',
         to: 'ACEITO',
+        // Ninguém atende o próprio pedido (quem tem os dois papéis poderia gerar repasse e cotas para si).
+        where: { clientId: { not: driverId } },
         data: { workerId: driverId, acceptedAt: now, ...(vehicleId ? { vehicleId } : {}) },
         actorId: driverId,
       });

@@ -135,8 +135,14 @@ describe('tempo real (WebSocket), Redis e PostGIS', () => {
     expect((await wsClient.next('delivery.updated')).status).toBe('A_CAMINHO_COLETA');
 
     // Terminada a entrega, o cliente deixa de receber a posição
-    for (const s of ['picked-up', 'en-route-dropoff', 'delivered'])
+    for (const s of ['picked-up', 'en-route-dropoff', 'delivered']) {
+      if (s === 'delivered') {
+        await new Promise((r) => setTimeout(r, 1100)); // a API descarta posições com menos de 1 s de intervalo
+        await t.atDropoff(driver);
+        await wsClient.next('driver.position'); // a posição no destino ainda é repassada ao cliente
+      }
       await t.post(`/driver/deliveries/${d.id}/${s}`, driver.token);
+    }
     await new Promise((r) => setTimeout(r, 1100));
     wsDriver.send('position', near(10));
     await wsDriver.next('position.ok');

@@ -764,3 +764,12 @@ O navegador só fala com o painel: `POST /api/auth/request` e `/api/auth/verify`
 - Limites: `429` com `Retry-After`. Padrão 300 req/min por IP; `/auth/otp/*` 10/min por IP; `/auth/refresh` e `/auth/logout` 30/min; `/auth/reauth/*` 5–10 por 10 min; `/share/:token/data` 30/min; uploads 20/h por usuário. OTP: 3 códigos/10 min, 10/dia e 20 erros/hora por telefone.
 - JWT: `HS256`, `iss=amma-api`, `aud=amma-app`.
 - Painel: `POST /api/auth/reauth/request|verify` (repassam à API com o token do cookie).
+
+## Conclusão exige presença no destino (auditoria de segurança, Parte 2)
+
+`POST /driver/deliveries/:id/delivered` responde `409` quando:
+
+- `{ code: "TOO_FAR_FROM_DROPOFF", distanceMeters, maxMeters: 300 }`: a última posição recebida pelo servidor está a mais de 300 m do destino;
+- `{ code: "POSITION_UNKNOWN" }`: não há posição, ou ela tem mais de 120 s (GPS desligado, app fechado).
+
+O app deve manter o envio de posição (`POST /driver/position` ou WebSocket). Quem não consegue chegar usa `POST /deliveries/:id/cancel` com `ENTREGA_IMPOSSIVEL`. O despacho e o aceite nunca atribuem o pedido ao próprio cliente.

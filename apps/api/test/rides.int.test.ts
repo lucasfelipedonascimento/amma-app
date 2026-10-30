@@ -593,6 +593,7 @@ describe('corridas de passageiro', () => {
         pin: ride.boardingPin,
       });
       await t.post(`/driver/deliveries/${ride.id}/en-route-dropoff`, driver.token);
+      await t.atDropoff(driver);
       await t.post(`/driver/deliveries/${ride.id}/delivered`, driver.token);
       const after = (await t.get(`/share/${s.token}/data`)).body;
       expect(after).toMatchObject({ ended: true, status: 'ENTREGUE', driverPosition: null });
