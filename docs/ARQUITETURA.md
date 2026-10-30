@@ -132,7 +132,7 @@ Não há módulo paralelo: a corrida **é** um `Delivery` com `kind = CORRIDA` (
 | `admin/src/app/api`                             | `auth/*` (OTP → cookies httpOnly, só para quem tem papel de painel) e `proxy/[...path]` (repassa `/admin` e `/panel`, exige mesma origem nas escritas)                                                                                     |
 | `admin/src/app/(panel)`                         | Páginas de servidor por área; `components/ActionForm.tsx` é o único componente de ação (aprovar, recusar com motivo, bloquear, cadastrar)                                                                                                  |
 
-O navegador nunca fala com a API nem enxerga o token: o painel é o intermediário (sem CORS na API). Dev: painel em `:3001`, API em `:3000` (`ADMIN_API_URL`).
+O navegador nunca fala com a API nem enxerga o token: o painel é o intermediário (CORS da API fechado por padrão; `CORS_ORIGINS` libera origens específicas). Dev: painel em `:3001`, API em `:3000` (`ADMIN_API_URL`).
 
 ## Testes
 
