@@ -139,7 +139,7 @@ describe('corrida em andamento', () => {
   it('emergência avisa a associação com o id da corrida; denúncia vai ligada à corrida', async () => {
     mockApi.mockResolvedValue({ id: 'x' });
     await renderRide('COLETADO');
-    await fireEvent.press(screen.getByText('🚨 Emergência'));
+    await fireEvent.press(screen.getByText('🚨 SOS'));
     const buttons = (Alert.alert as jest.Mock).mock.calls[0][2] as {
       text: string;
       onPress?: () => void;

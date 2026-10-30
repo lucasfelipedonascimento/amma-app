@@ -48,6 +48,28 @@ export class SimulatorController {
     );
   }
 
+  /**
+   * Latitude do destino ao norte da coleta tal que a rota PELAS RUAS tenha ~`meters`. Em linha reta a rota
+   * real costuma ser 30% a 60% maior, e o app do motorista mostra a distância da rota.
+   */
+  private async dropoffByRoad(pickup: { lat: number; lng: number }, meters: number) {
+    let straight = meters;
+    let best = { lat: pickup.lat + straight / METERS_PER_DEG, error: Infinity };
+    for (let i = 0; i < 8; i++) {
+      const lat = pickup.lat + straight / METERS_PER_DEG;
+      const road = await this.deliveries
+        .route({ pickup, dropoff: { lat, lng: pickup.lng } })
+        .then((r) => r.distanceMeters)
+        .catch(() => null);
+      if (road === null) return best.error === Infinity ? lat : best.lat;
+      const error = Math.abs(road - meters) / meters;
+      if (error < best.error) best = { lat, error };
+      if (error < 0.03) break;
+      straight = Math.max(100, straight * (meters / road));
+    }
+    return best.lat;
+  }
+
   @Get()
   status() {
     return { enabled: this.isEnabled() };
@@ -65,6 +87,8 @@ export class SimulatorController {
 
     const meters = dto.distanceMeters ?? 2000;
     const pickupLat = dto.lat + 300 / METERS_PER_DEG;
+    const pickup = { lat: pickupLat, lng: dto.lng };
+    const dropoffLat = await this.dropoffByRoad(pickup, meters);
     const body = {
       pickup: {
         lat: pickupLat,
@@ -72,9 +96,9 @@ export class SimulatorController {
         address: 'Coleta de teste (~300 m ao norte)',
       },
       dropoff: {
-        lat: pickupLat + meters / METERS_PER_DEG,
+        lat: dropoffLat,
         lng: dto.lng,
-        address: `Destino de teste (~${(meters / 1000).toFixed(1)} km ao norte)`,
+        address: `Destino de teste (~${(meters / 1000).toFixed(1)} km pelas ruas)`,
       },
       payment: { method: 'CARTAO' as const, cardToken: SANDBOX_CARD_TOKEN },
     };

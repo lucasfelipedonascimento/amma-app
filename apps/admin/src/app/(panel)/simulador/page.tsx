@@ -26,12 +26,12 @@ const LNG = {
 } as const;
 const DISTANCE = {
   name: 'distanceMeters',
-  label: 'Distância até o destino (m)',
+  label: 'Distância da corrida pelas ruas (m)',
   type: 'number',
   min: 100,
   max: 20000,
   required: false,
-  hint: 'Vazio = 2000 m.',
+  hint: 'Vazio = 2000 m. É a distância da rota, igual à mostrada no app (não em linha reta).',
 } as const;
 const VEHICLE = {
   name: 'vehicleType',

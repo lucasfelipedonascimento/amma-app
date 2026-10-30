@@ -39,7 +39,9 @@ describe('Entrega em andamento', () => {
     expect(screen.getAllByTestId('marker')).toHaveLength(3); // coleta, entrega e motorista
     expect(screen.getByTestId('target-address').props.children).toBe('Rua da Coleta, 100');
     expect(screen.getByText('Ir buscar em')).toBeTruthy();
-    expect(screen.getByText(/1,5 km · 5 min/)).toBeTruthy();
+    // distância e tempo que FALTAM até a coleta, pela rota
+    expect(screen.getByText('1,5 km')).toBeTruthy();
+    expect(screen.getByText('5 min')).toBeTruthy();
   });
 
   it.each([
@@ -84,6 +86,12 @@ describe('Entrega em andamento', () => {
     await renderScreen('A_CAMINHO_ENTREGA');
     expect(screen.getByText('Levar até')).toBeTruthy();
     expect(screen.getByTestId('target-address').props.children).toBe('Rua da Entrega, 200');
+  });
+
+  it('nos detalhes diz quanto falta e o valor', async () => {
+    await renderScreen('ACEITO');
+    await fireEvent.press(screen.getByText('Detalhes'));
+    expect(screen.getByText(/Faltam 1,5 km · 5 min/)).toBeTruthy();
   });
 
   it('abre direto no mapa em tela cheia, com Cancelar e Detalhes', async () => {
@@ -141,7 +149,7 @@ describe('Entrega em andamento', () => {
   it('botão de emergência pede confirmação e oferece 190, 192 e 193', async () => {
     const open = jest.spyOn(Linking, 'openURL').mockResolvedValue(undefined);
     await renderScreen('ACEITO');
-    await fireEvent.press(screen.getByText('🚨 Emergência'));
+    await fireEvent.press(screen.getByText('🚨 SOS'));
     const [title, , buttons] = (Alert.alert as jest.Mock).mock.calls[0] as [
       string,
       string,
@@ -180,7 +188,7 @@ describe('Entrega em andamento', () => {
   it('abre o app de mapas com o destino', async () => {
     const open = jest.spyOn(Linking, 'openURL').mockResolvedValue(undefined);
     await renderScreen('ACEITO');
-    await fireEvent.press(screen.getByText('Abrir no app de mapas'));
+    await fireEvent.press(screen.getByText('🧭 Navegar'));
     expect(open).toHaveBeenCalledWith(expect.stringContaining('destination=-7.115,-34.861'));
   });
 });

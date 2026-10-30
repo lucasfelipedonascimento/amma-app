@@ -19,11 +19,14 @@ jest.mock('../../api', () => {
 const mockApi = api as jest.Mock;
 
 let current: ClientDelivery;
-let listener: ((event: string, data: unknown) => void) | null;
+type Listener = (event: string, data: unknown) => void;
+const listeners = new Set<Listener>();
+/** Entrega o evento a todos os ouvintes (a tela e o chat). */
+const listener = (event: string, data: unknown) => listeners.forEach((fn) => fn(event, data));
 
 const setup = async (d: ClientDelivery, over: Partial<ClientValue> = {}) => {
   current = d;
-  listener = null;
+  listeners.clear();
   mockApi.mockImplementation(async (path: string, opts?: { body?: unknown }) => {
     if (path === `/deliveries/${d.id}`) return current;
     if (path.endsWith('/cancel')) {
@@ -51,8 +54,8 @@ const setup = async (d: ClientDelivery, over: Partial<ClientValue> = {}) => {
     <WithClient
       value={clientValue({
         subscribe: (fn) => {
-          listener = fn;
-          return () => {};
+          listeners.add(fn);
+          return () => void listeners.delete(fn);
         },
         ...over,
       })}
@@ -81,12 +84,10 @@ describe('Acompanhar entrega', () => {
     expect(screen.getByText('Maria')).toBeTruthy();
     expect(screen.getAllByTestId('marker')).toHaveLength(2);
     await act(async () =>
-      listener!('driver.position', { deliveryId: 'outro', lat: -7.1, lng: -34.8 }),
+      listener('driver.position', { deliveryId: 'outro', lat: -7.1, lng: -34.8 }),
     );
     expect(screen.getAllByTestId('marker')).toHaveLength(2);
-    await act(async () =>
-      listener!('driver.position', { deliveryId: 'd1', lat: -7.1, lng: -34.8 }),
-    );
+    await act(async () => listener('driver.position', { deliveryId: 'd1', lat: -7.1, lng: -34.8 }));
     expect(screen.getAllByTestId('marker')).toHaveLength(3);
   });
 
@@ -94,7 +95,7 @@ describe('Acompanhar entrega', () => {
     await setup(delivery);
     await screen.findByText('Buscando motorista');
     current = { ...current, status: 'COLETADO' };
-    await act(async () => listener!('delivery.updated', { id: 'd1', status: 'COLETADO' }));
+    await act(async () => listener('delivery.updated', { id: 'd1', status: 'COLETADO' }));
     expect(await screen.findByText('Item coletado')).toBeTruthy();
     // Sem cancelar depois de coletado.
     expect(screen.queryByText('Cancelar pedido')).toBeNull();

@@ -193,16 +193,17 @@ model User {
   reviewedDocs  Document[]     @relation("DocumentReviewer")
 
   presence           DriverPresence?
-  deliveriesAsClient Delivery[]       @relation("DeliveryClient")
-  deliveriesAsWorker Delivery[]       @relation("DeliveryWorker")
+  deliveriesAsClient Delivery[]        @relation("DeliveryClient")
+  deliveriesAsWorker Delivery[]        @relation("DeliveryWorker")
   deliveryOffers     DeliveryOffer[]
   pushTokens         PushToken[]
   merchant           Merchant?
-  ratingsGiven       Rating[]         @relation("RatingAuthor")
-  ratingsReceived    Rating[]         @relation("RatingRatee")
+  ratingsGiven       Rating[]          @relation("RatingAuthor")
+  messagesSent       DeliveryMessage[]
+  ratingsReceived    Rating[]          @relation("RatingRatee")
   emergencyAlerts    EmergencyAlert[]
-  reportsMade        Report[]         @relation("ReportReporter")
-  reportsReceived    Report[]         @relation("ReportReported")
+  reportsMade        Report[]          @relation("ReportReporter")
+  reportsReceived    Report[]          @relation("ReportReported")
 
   // Etapa 8: associação
   proposalsCreated Proposal[]
@@ -448,17 +449,18 @@ model Delivery {
   deliveredAt DateTime? @db.Timestamptz(3)
   updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
 
-  client          User             @relation("DeliveryClient", fields: [clientId], references: [id])
-  worker          User?            @relation("DeliveryWorker", fields: [workerId], references: [id])
+  client          User              @relation("DeliveryClient", fields: [clientId], references: [id])
+  worker          User?             @relation("DeliveryWorker", fields: [workerId], references: [id])
   offers          DeliveryOffer[]
   events          DeliveryEvent[]
-  vehicle         Vehicle?         @relation(fields: [vehicleId], references: [id])
+  vehicle         Vehicle?          @relation(fields: [vehicleId], references: [id])
   payment         Payment?
   ratings         Rating[]
   shares          TripShare[]
   tripPoints      TripPoint[]
   emergencyAlerts EmergencyAlert[]
   reports         Report[]
+  messages        DeliveryMessage[]
 
   @@unique([clientId, idempotencyKey])
   @@index([clientId, createdAt])
@@ -491,6 +493,21 @@ model DeliveryOffer {
 
 // Linha do tempo e registro de decisões do despacho (somente inserção).
 // `reason` usa os códigos de DISPATCH_REASONS / CANCEL_REASONS do shared.
+// Chat da corrida/entrega entre cliente e motorista. Só durante o atendimento; some junto com o pedido
+// e as mensagens de quem exclui a conta são apagadas (LGPD).
+model DeliveryMessage {
+  id         String   @id @default(uuid())
+  deliveryId String
+  senderId   String
+  body       String
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+  delivery   Delivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  sender     User     @relation(fields: [senderId], references: [id])
+
+  @@index([deliveryId, createdAt])
+  @@index([senderId])
+}
+
 model DeliveryEvent {
   id         String            @id @default(uuid())
   deliveryId String

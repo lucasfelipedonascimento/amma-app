@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { StyleSheet, Text } from 'react-native';
 import { clientCancelOptions, formatBRL } from '@amma/shared';
 import { CancelReasonModal } from '../../CancelReasonModal';
+import { ChatLauncher, CLIENT_QUICK_REPLIES } from '../../chat/ChatLauncher';
 import { api } from '../../api';
 import { errorMessage } from '../../errors';
 import { colors } from '../../theme';
@@ -26,6 +27,14 @@ import {
 import { paymentLine } from '../receiptText';
 import type { ClientDelivery } from '../types';
 
+/** Estados em que há motorista atendendo e o chat está aberto. */
+const CHAT_STATUSES: readonly string[] = [
+  'ACEITO',
+  'A_CAMINHO_COLETA',
+  'COLETADO',
+  'A_CAMINHO_ENTREGA',
+];
+
 /** Acompanhamento em tempo real: estado, mapa com o motorista, pagamento, cancelamento, avaliação e recibo. */
 export function TrackingScreen({
   id,
@@ -37,7 +46,7 @@ export function TrackingScreen({
   onReceipt: () => void;
 }) {
   const { delivery: d, error, reload, driverAt } = useLiveDelivery(id);
-  const { realtime, offline, reloadDeliveries } = useClient();
+  const { realtime, offline, reloadDeliveries, subscribe } = useClient();
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [cancelOpen, setCancelOpen] = useState(false);
@@ -82,6 +91,16 @@ export function TrackingScreen({
         <Text style={s.muted}>{cancelText(d.kind, d.cancelReason)}</Text>
       ) : null}
       {d.status !== 'CANCELADO' ? <ClientSteps delivery={d} /> : null}
+      {d.driver && CHAT_STATUSES.includes(d.status) ? (
+        <ChatLauncher
+          deliveryId={d.id}
+          subscribe={subscribe}
+          realtimeOpen={realtime === 'open'}
+          open
+          who="o motorista"
+          quickReplies={CLIENT_QUICK_REPLIES}
+        />
+      ) : null}
       <ErrorText message={cancelOpen ? null : actionError} />
       {canClientCancel(d.status) ? (
         <Button

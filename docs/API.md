@@ -244,13 +244,14 @@ Mensagens JSON `{ "event": "...", "data": ... }`.
 
 3. Eventos enviados pelo servidor:
 
-   | Evento             | Para                | `data`                                                                     |
-   | ------------------ | ------------------- | -------------------------------------------------------------------------- |
-   | `offer.created`    | motorista           | a oferta (seção 4)                                                         |
-   | `offer.closed`     | motorista           | `{ offerId, reason }` (`EXPIROU`, `RECUSOU`, `FICOU_OFFLINE`, `CANCELADO`) |
-   | `delivery.updated` | cliente e motorista | `{ id, status, cancelReason? }`                                            |
-   | `driver.position`  | cliente             | `{ deliveryId, lat, lng, at }` — só com entrega em andamento               |
-   | `payment.updated`  | cliente             | `{ deliveryId, status }` (`PAGO`, `EXPIRADO`, `ESTORNADO`)                 |
+   | Evento             | Para                 | `data`                                                                     |
+   | ------------------ | -------------------- | -------------------------------------------------------------------------- |
+   | `offer.created`    | motorista            | a oferta (seção 4)                                                         |
+   | `offer.closed`     | motorista            | `{ offerId, reason }` (`EXPIROU`, `RECUSOU`, `FICOU_OFFLINE`, `CANCELADO`) |
+   | `delivery.updated` | cliente e motorista  | `{ id, status, cancelReason? }`                                            |
+   | `chat.message`     | o outro lado do chat | `{ deliveryId, message: { id, body, createdAt, fromMe } }`                 |
+   | `driver.position`  | cliente              | `{ deliveryId, lat, lng, at }` — só com entrega em andamento               |
+   | `payment.updated`  | cliente              | `{ deliveryId, status }` (`PAGO`, `EXPIRADO`, `ESTORNADO`)                 |
 
 Se um evento se perder, o REST sempre devolve o estado atual (`GET /driver/offers/current`, `GET /deliveries/:id`).
 
@@ -781,3 +782,18 @@ O app deve manter o envio de posição (`POST /driver/position` ou WebSocket). Q
 - `POST /driver/presence/online` → `403 { code: "LOCATION_CONSENT_REQUIRED" }` sem consentimento vigente (`POST /driver/location-consent`). `DELETE /driver/location-consent` também tira o motorista do ar e apaga a posição.
 - `GET /me/export` (logado, inclusive bloqueado; 3/dia): JSON com os dados do titular (`Content-Disposition: attachment`).
 - Uploads recusam PDF com conteúdo ativo (`400`); documentos por conta: máx. 50 (`409`). `GET /admin/documents/:id/file` devolve sempre como anexo.
+
+## Chat, cancelamento com motivo e simulador (pós-etapa 10)
+
+**Chat do pedido** (cliente/passageiro ↔ motorista; os dois podem começar a conversa). Só os dois participantes enxergam (qualquer outra pessoa, inclusive admin, recebe 404).
+
+| Rota                            | O que faz                                                                                                                                |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /deliveries/:id/messages`  | Últimas 100 mensagens, em ordem. `fromMe` é calculado para quem pergunta. Legível mesmo depois de encerrado.                             |
+| `POST /deliveries/:id/messages` | `{ body }` (1 a 500 caracteres). Só com motorista atendendo (`ACEITO` até `A_CAMINHO_ENTREGA`); fora disso 409. Limite de 40 por minuto. |
+
+Entrega em tempo real pelo evento `chat.message`. Se o destinatário não tem WebSocket aberto, vai um push **sem o texto** ("Toque para ler"). Mensagens somem com o pedido e as de quem exclui a conta são apagadas (LGPD).
+
+**Cancelamento com motivo:** `POST /deliveries/:id/cancel` e `POST /driver/deliveries/:id/release` aceitam `category` (ex.: `MUDEI_DE_IDEIA`, `CLIENTE_NAO_APARECEU`), conferida contra a lista de quem age (`@amma/shared`, `cancel-options.ts`). Fica no `data` do evento do pedido.
+
+**Simulador (temporário, só ADMIN):** `GET /admin/simulator` e `POST /admin/simulator/orders` criam um pedido de teste em nome da passageira do seed. Desligado em produção ou fora do pagamento `sandbox`. A distância informada é a da rota pelas ruas.

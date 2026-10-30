@@ -85,6 +85,8 @@ export class AccountService {
         data: { status: 'CANCELADA', respondedAt: new Date() },
       }),
       this.prisma.pushToken.deleteMany({ where: { userId } }),
+      // Chat: o que a pessoa escreveu é dado pessoal; as mensagens dela somem.
+      this.prisma.deliveryMessage.deleteMany({ where: { senderId: userId } }),
       // Endereço do estabelecimento e textos livres das avaliações são dados pessoais; o resto (valores) fica.
       this.prisma.merchant.deleteMany({ where: { userId } }),
       this.prisma.rating.updateMany({ where: { authorId: userId }, data: { comment: null } }),

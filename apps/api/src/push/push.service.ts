@@ -156,4 +156,31 @@ export class PushService {
       this.logger.warn(`Falha ao enviar push: ${(e as Error).message}`);
     }
   }
+
+  /**
+   * Avisa que chegou mensagem no chat da corrida. Sem o texto: a tela bloqueada é pública.
+   * Nunca lança (a mensagem já foi gravada e chega pelo WebSocket/REST).
+   */
+  async notifyChat(userId: string, deliveryId: string, fromRole: 'MOTORISTA' | 'CLIENTE') {
+    try {
+      const rows = await this.prisma.pushToken.findMany({
+        where: { userId },
+        select: { token: true },
+      });
+      if (rows.length === 0) return;
+      const { invalidTokens } = await this.sender.send(
+        rows.map((r) => r.token),
+        {
+          title: fromRole === 'MOTORISTA' ? 'Mensagem do motorista' : 'Mensagem do cliente',
+          body: 'Toque para ler.',
+          data: { type: 'chat', deliveryId },
+          ttlSeconds: 300,
+        },
+      );
+      if (invalidTokens.length > 0)
+        await this.prisma.pushToken.deleteMany({ where: { token: { in: invalidTokens } } });
+    } catch (e) {
+      this.logger.warn(`Falha ao enviar push do chat: ${(e as Error).message}`);
+    }
+  }
 }

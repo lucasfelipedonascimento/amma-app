@@ -28,6 +28,8 @@ import {
 } from '../safety/safety.controller';
 import { SafetyService } from '../safety/safety.service';
 import { StorageService } from '../common/storage.service';
+import { ChatController } from './chat.controller';
+import { ChatService } from './chat.service';
 import { AdminOpsController } from './admin-ops.controller';
 import { DeliveryController } from './delivery.controller';
 import { DeliveryService } from './delivery.service';
@@ -39,6 +41,7 @@ import { SimulatorController } from './simulator.controller';
   exports: [PositionStore],
   controllers: [
     DeliveryController,
+    ChatController,
     DriverOpsController,
     AdminOpsController,
     SimulatorController,
@@ -71,6 +74,7 @@ import { SimulatorController } from './simulator.controller';
     DispatchService,
     DispatchScheduler,
     DeliveryService,
+    ChatService,
     DriverService,
     DriverAppService,
     PushService,

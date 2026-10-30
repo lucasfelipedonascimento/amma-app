@@ -74,6 +74,8 @@ export interface DriverValue {
   /** `pin` é o PIN de embarque (só corrida, ao confirmar o embarque). */
   advance: (pin?: string) => Promise<void>;
   release: () => Promise<void>;
+  /** Escuta eventos do tempo real (ex.: `chat.message`). Devolve a função que cancela. */
+  subscribe: (fn: (event: string, data: unknown) => void) => () => void;
   /**
    * Cancelar pelo menu de motivos. RELEASE devolve o pedido à fila; CANCEL cancela (coleta ou entrega impossível).
    * Devolve true se deu certo (a tela fecha o menu).
@@ -175,8 +177,15 @@ export function DriverProvider({ children }: { children: ReactNode }) {
 
   // ------------------------------------------------------------------ tempo real
 
+  const listeners = useRef(new Set<(event: string, data: unknown) => void>());
+  const subscribe = useCallback((fn: (event: string, data: unknown) => void) => {
+    listeners.current.add(fn);
+    return () => void listeners.current.delete(fn);
+  }, []);
+
   const handleEvent = useCallback(
     (event: string, data: unknown) => {
+      listeners.current.forEach((fn) => fn(event, data));
       if (event === 'offer.created') setOffer(data as Offer);
       else if (event === 'offer.closed') {
         const { offerId } = data as { offerId: string };
@@ -494,6 +503,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       advance,
       release,
       cancelTrip,
+      subscribe,
       prepareSignOut,
     }),
     [
@@ -525,6 +535,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       advance,
       release,
       cancelTrip,
+      subscribe,
       prepareSignOut,
     ],
   );

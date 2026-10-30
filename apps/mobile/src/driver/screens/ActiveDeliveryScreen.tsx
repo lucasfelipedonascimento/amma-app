@@ -12,6 +12,7 @@ import { CancelReasonModal } from '../../CancelReasonModal';
 import { colors } from '../../theme';
 import { Button, ErrorText, Field } from '../../ui';
 import { ReportCard } from '../../safety/ReportCard';
+import { ChatLauncher, DRIVER_QUICK_REPLIES } from '../../chat/ChatLauncher';
 import { EmergencyButton } from '../components/EmergencyButton';
 import { Card, Page } from '../components/layout';
 import { RouteMap } from '../components/RouteMap';
@@ -119,24 +120,27 @@ export function ActiveDeliveryScreen() {
     </>
   );
 
+  const label =
+    target === 'COLETA'
+      ? ride
+        ? 'Ir buscar o passageiro em'
+        : 'Ir buscar em'
+      : ride
+        ? 'Levar o passageiro até'
+        : 'Levar até';
+  // Distância/tempo que FALTAM até o próximo ponto (rota pelas ruas, a partir da posição atual).
+  const remaining = route
+    ? `Faltam ${formatDistance(route.distanceMeters)} · ${formatDuration(route.durationSeconds)}`
+    : `${formatDistance(a.distanceMeters)} de corrida`;
+
   const summary = (
     <>
-      <Text style={s.label}>
-        {target === 'COLETA'
-          ? ride
-            ? 'Ir buscar o passageiro em'
-            : 'Ir buscar em'
-          : ride
-            ? 'Levar o passageiro até'
-            : 'Levar até'}
-      </Text>
+      <Text style={s.label}>{label}</Text>
       <Text style={s.address} testID="target-address">
         {place.address}
       </Text>
       <Text style={s.meta}>
-        {route
-          ? `${formatDistance(route.distanceMeters)} · ${formatDuration(route.durationSeconds)}`
-          : `${formatDistance(a.distanceMeters)} de corrida`}
+        {remaining}
         {' · '}
         {formatBRL(a.fareCents)}
       </Text>
@@ -161,7 +165,7 @@ export function ActiveDeliveryScreen() {
         <View style={{ flex: 1 }}>
           <RouteMap
             fill
-            inset={{ top: 190, bottom: needsPin ? 400 : 320 }}
+            inset={{ top: 70, bottom: needsPin ? 190 : 120 }}
             driver={d.position}
             pickup={a.pickup}
             dropoff={a.dropoff}
@@ -169,28 +173,68 @@ export function ActiveDeliveryScreen() {
             path={route?.path ?? null}
           />
           <View style={s.top} pointerEvents="box-none">
-            <View style={s.panel}>
-              {summary}
-              {routeError && !route ? (
-                <Text style={s.meta}>Rota indisponível agora. Tente de novo em instantes.</Text>
-              ) : null}
+            <View style={[s.panel, s.topPanel]}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.labelSm}>{label}</Text>
+                <Text style={s.addressSm} numberOfLines={1} testID="target-address">
+                  {place.address}
+                </Text>
+                {routeError && !route ? (
+                  <Text style={s.labelSm}>Rota indisponível agora.</Text>
+                ) : null}
+              </View>
+              <View style={s.remaining}>
+                <Text style={s.remainingKm}>
+                  {route ? formatDistance(route.distanceMeters) : '—'}
+                </Text>
+                <Text style={s.labelSm}>
+                  {route ? formatDuration(route.durationSeconds) : 'sem rota'}
+                </Text>
+              </View>
             </View>
           </View>
           <View style={s.bottom} pointerEvents="box-none">
             <View style={s.panel}>
               {controls}
-              <EmergencyButton deliveryId={a.id} />
               <View style={s.actions}>
-                <View style={{ flex: 1 }}>
+                <View style={s.action}>
+                  <ChatLauncher
+                    size="sm"
+                    deliveryId={a.id}
+                    subscribe={d.subscribe}
+                    realtimeOpen={d.realtime === 'open'}
+                    open
+                    who={ride ? 'o passageiro' : 'o cliente'}
+                    quickReplies={DRIVER_QUICK_REPLIES}
+                  />
+                </View>
+                <View style={s.action}>
+                  <Button
+                    title="🧭 Navegar"
+                    kind="ghost"
+                    size="sm"
+                    onPress={() => void openNavigation(place.lat, place.lng)}
+                  />
+                </View>
+                <View style={s.action}>
+                  <EmergencyButton compact deliveryId={a.id} />
+                </View>
+                <View style={s.action}>
                   <Button
                     title="Cancelar"
                     kind="ghost"
+                    size="sm"
                     onPress={() => setCancelOpen(true)}
                     disabled={d.busy}
                   />
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Button title="Detalhes" kind="ghost" onPress={() => setView('detalhes')} />
+                <View style={s.action}>
+                  <Button
+                    title="Detalhes"
+                    kind="ghost"
+                    size="sm"
+                    onPress={() => setView('detalhes')}
+                  />
                 </View>
               </View>
             </View>
@@ -261,19 +305,25 @@ export function ActiveDeliveryScreen() {
 }
 
 const s = StyleSheet.create({
-  top: { position: 'absolute', top: 0, left: 0, right: 0, padding: 12 },
-  bottom: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 12 },
+  top: { position: 'absolute', top: 0, left: 0, right: 0, padding: 8 },
+  bottom: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 8 },
   panel: {
     backgroundColor: colors.cream,
-    borderRadius: 16,
-    padding: 14,
-    gap: 6,
+    borderRadius: 12,
+    padding: 10,
+    gap: 8,
     shadowColor: '#000',
     shadowOpacity: 0.2,
     shadowRadius: 8,
     elevation: 6,
   },
-  actions: { flexDirection: 'row', gap: 8 },
+  topPanel: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  labelSm: { color: colors.muted, fontSize: 11, fontWeight: '700', textTransform: 'uppercase' },
+  addressSm: { color: colors.black, fontSize: 15, fontWeight: '700' },
+  remaining: { alignItems: 'flex-end' },
+  remainingKm: { color: colors.red, fontSize: 20, fontWeight: '800' },
+  actions: { flexDirection: 'row', gap: 6 },
+  action: { flex: 1 },
   label: { color: colors.muted, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
   address: { color: colors.black, fontSize: 18, fontWeight: '700' },
   meta: { color: colors.muted, fontSize: 14 },

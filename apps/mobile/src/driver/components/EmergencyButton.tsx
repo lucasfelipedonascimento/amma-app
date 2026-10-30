@@ -27,8 +27,20 @@ async function quickPosition(): Promise<{ lat: number; lng: number } | undefined
  * AVISA A ASSOCIAÇÃO com a corrida e a última posição, e liga para quem socorre. Se o aviso falhar
  * (sem internet), a ligação continua: o telefone vem primeiro.
  */
-export function EmergencyButton({ deliveryId }: { deliveryId?: string }) {
-  const [note, setNote] = useState<string | null>(null);
+export function EmergencyButton({
+  deliveryId,
+  compact,
+}: {
+  deliveryId?: string;
+  /** Botão pequeno para a tela do mapa; o resultado do aviso aparece num alerta. */
+  compact?: boolean;
+}) {
+  const [note, setNoteState] = useState<string | null>(null);
+  const setNote = (v: string) => {
+    if (compact) {
+      if (!v.endsWith('…')) Alert.alert('Emergência', v);
+    } else setNoteState(v);
+  };
 
   const notify = async () => {
     setNote('Avisando a associação…');
@@ -58,7 +70,12 @@ export function EmergencyButton({ deliveryId }: { deliveryId?: string }) {
     ]);
   return (
     <>
-      <Button title="🚨 Emergência" kind="danger" onPress={open} />
+      <Button
+        title={compact ? '🚨 SOS' : '🚨 Emergência'}
+        kind="danger"
+        size={compact ? 'sm' : 'md'}
+        onPress={open}
+      />
       {note ? <Text style={s.note}>{note}</Text> : null}
     </>
   );

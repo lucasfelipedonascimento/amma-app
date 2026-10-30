@@ -54,12 +54,15 @@ export function Button({
   kind = 'primary',
   loading,
   disabled,
+  size = 'md',
 }: {
   title: string;
   onPress: () => void;
   kind?: 'primary' | 'ghost' | 'danger';
   loading?: boolean;
   disabled?: boolean;
+  /** `sm`: botão baixo, para painéis sobre o mapa. */
+  size?: 'md' | 'sm';
 }) {
   const off = disabled || loading;
   return (
@@ -71,6 +74,7 @@ export function Button({
       accessibilityState={{ disabled: off, busy: loading }}
       style={[
         s.btn,
+        size === 'sm' && s.btnSm,
         kind === 'primary' && s.btnPrimary,
         kind === 'danger' && s.btnDanger,
         kind === 'ghost' && s.btnGhost,
@@ -80,7 +84,15 @@ export function Button({
       {loading ? (
         <ActivityIndicator color={kind === 'ghost' ? colors.red : colors.white} />
       ) : (
-        <Text style={[s.btnText, kind === 'ghost' && { color: colors.red }]}>{title}</Text>
+        <Text
+          style={[
+            s.btnText,
+            size === 'sm' && s.btnTextSm,
+            kind === 'ghost' && { color: colors.red },
+          ]}
+        >
+          {title}
+        </Text>
       )}
     </Pressable>
   );
@@ -107,6 +119,8 @@ const s = StyleSheet.create({
     color: colors.black,
   },
   btn: { borderRadius: 10, padding: 14, alignItems: 'center', marginTop: 4 },
+  btnSm: { borderRadius: 8, paddingVertical: 8, paddingHorizontal: 4, marginTop: 0 },
+  btnTextSm: { fontSize: 12 },
   btnPrimary: { backgroundColor: colors.red },
   btnDanger: { backgroundColor: colors.black },
   btnGhost: { borderWidth: 1, borderColor: colors.red },

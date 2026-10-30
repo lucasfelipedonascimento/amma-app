@@ -99,6 +99,10 @@ export class CancelDto {
   @IsOptional() @IsString() @MaxLength(280) note?: string;
 }
 
+export class SendMessageDto {
+  @IsString() @MinLength(1) @MaxLength(500) body!: string;
+}
+
 export class ReleaseDto {
   @IsOptional() @IsIn(CANCEL_CATEGORY_KEYS) category?: string;
 }
