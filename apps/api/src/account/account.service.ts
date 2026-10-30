@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { StorageService } from '../common/storage.service';
 import { PRIVACY_POLICY_VERSION } from '../legal/privacy-policy';
 import { PositionStore } from '../presence/position-store';
@@ -73,6 +74,11 @@ export class AccountService {
       where: { claim: { claimantId: userId } },
       select: { storageKey: true },
     });
+    // Pontos de acolhida (Etapa 9): fotos e endereço do que a pessoa cadastrou são dados pessoais.
+    const pointFiles = await this.prisma.welcomePointPhoto.findMany({
+      where: { point: { ownerId: userId } },
+      select: { storageKey: true },
+    });
     await this.prisma.$transaction([
       this.prisma.deliveryOffer.updateMany({
         where: { driverId: userId, status: 'PENDENTE' },
@@ -109,6 +115,25 @@ export class AccountService {
         where: { claimantId: userId },
         data: { description: '(removido a pedido do titular)' },
       }),
+      // Pontos: saem do mapa e perdem endereço, fotos e texto; avaliações, benefícios e denúncias ficam, sem identificação.
+      this.prisma.welcomePointPhoto.deleteMany({ where: { point: { ownerId: userId } } }),
+      this.prisma.welcomePoint.updateMany({
+        where: { ownerId: userId },
+        data: {
+          status: 'REMOVIDO',
+          statusNote: 'Conta do anfitrião excluída',
+          name: '(removido)',
+          description: null,
+          address: '(removido)',
+          reference: null,
+          checklist: Prisma.DbNull,
+        },
+      }),
+      this.prisma.checkIn.updateMany({
+        where: { OR: [{ userId }, { point: { ownerId: userId } }], endedAt: null },
+        data: { endedAt: new Date() },
+      }),
+      this.prisma.pointRating.updateMany({ where: { authorId: userId }, data: { comment: null } }),
       this.prisma.driverPresence.deleteMany({ where: { userId } }),
       this.prisma.document.deleteMany({ where: { userId } }),
       this.prisma.vehicle.deleteMany({ where: { userId } }),
@@ -123,6 +148,8 @@ export class AccountService {
     ]);
     await this.positions.remove(userId);
     // Arquivos só depois do banco confirmar.
-    await Promise.all([...docs, ...claimFiles].map((d) => this.storage.remove(d.storageKey)));
+    await Promise.all(
+      [...docs, ...claimFiles, ...pointFiles].map((d) => this.storage.remove(d.storageKey)),
+    );
   }
 }

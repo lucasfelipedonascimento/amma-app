@@ -162,6 +162,7 @@ enum LedgerKind {
   REVERSAL
   GROUP_CONTRIBUTION // Etapa 8: aporte de compra coletiva (registro; o dinheiro vai ao parceiro)
   SURPLUS_DISTRIBUTION // Etapa 8: fechamento das sobras anuais
+  HOST_BENEFIT // Etapa 9: benefício ao anfitrião de ponto de acolhida
 }
 
 enum LedgerDirection {
@@ -211,6 +212,12 @@ model User {
   contributions    Contribution[]
   insuranceClaims  InsuranceClaim[] @relation("ClaimClaimant")
   surplusShares    SurplusShare[]
+
+  // Etapa 9: pontos de acolhida
+  welcomePoints WelcomePoint[] @relation("PointOwner")
+  checkIns      CheckIn[]
+  pointRatings  PointRating[]  @relation("PointRatingAuthor")
+  pointReports  PointReport[]  @relation("PointReporter")
 }
 
 // Código de uso único enviado por SMS. Só o hash é guardado.
@@ -1015,4 +1022,179 @@ model SurplusShare {
 
   @@unique([runId, userId])
   @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Etapa 9: pontos de acolhida
+// ---------------------------------------------------------------------------
+
+enum PointType {
+  ESPACO_PUBLICO
+  CASA_PARCEIRA
+  COMERCIO
+}
+
+enum PointStatus {
+  EM_ANALISE
+  ATIVO
+  SUSPENSO
+  RECUSADO
+  REMOVIDO
+}
+
+enum Amenity {
+  AGUA
+  BANHEIRO
+  CARREGADOR
+  DESCANSO
+  WIFI
+  ALIMENTACAO
+  ESTACIONAMENTO
+}
+
+enum HostBenefitKind {
+  CREDITO
+  DESCONTO
+}
+
+enum PointRatingDirection {
+  VISITANTE_AVALIA_PONTO
+  ANFITRIAO_AVALIA_VISITANTE
+}
+
+enum PointReportCategory {
+  SEGURANCA
+  ASSEDIO
+  COBRANCA_INDEVIDA
+  LOCAL_INEXISTENTE
+  ESTRUTURA_DIFERENTE
+  OUTRO
+}
+
+enum PointReportStatus {
+  ABERTA
+  PROCEDENTE
+  IMPROCEDENTE
+}
+
+model WelcomePoint {
+  id           String          @id @default(uuid())
+  // Quem cadastrou. Nos pontos com anfitrião (casa, comércio) é o anfitrião.
+  ownerId      String
+  type         PointType
+  status       PointStatus
+  name         String
+  description  String?
+  // Endereço completo: o mapa só mostra o bairro e uma posição aproximada nas casas.
+  address      String
+  neighborhood String
+  reference    String?
+  lat          Float
+  lng          Float
+  // OpeningHours do shared ({ always, slots }), validado na API.
+  hours        Json
+  amenities    Amenity[]
+  capacity     Int
+  benefitKind  HostBenefitKind @default(CREDITO)
+  // Só casa parceira: checklist de segurança confirmado pelo anfitrião.
+  checklist    Json?
+  // Motivo do status atual (suspensão automática, recusa, remoção).
+  statusNote   String?
+  decidedById  String?
+  decidedAt    DateTime?       @db.Timestamptz(3)
+  createdAt    DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime        @updatedAt @db.Timestamptz(3)
+
+  owner    User                @relation("PointOwner", fields: [ownerId], references: [id])
+  photos   WelcomePointPhoto[]
+  checkIns CheckIn[]
+  reports  PointReport[]
+  events   PointEvent[]
+
+  @@index([status, lat, lng])
+  @@index([ownerId])
+}
+
+model WelcomePointPhoto {
+  id         String   @id @default(uuid())
+  pointId    String
+  storageKey String
+  mimeType   String
+  sizeBytes  Int
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  point WelcomePoint @relation(fields: [pointId], references: [id], onDelete: Cascade)
+
+  @@index([pointId])
+}
+
+model CheckIn {
+  id             String    @id @default(uuid())
+  pointId        String
+  userId         String
+  startedAt      DateTime  @default(now()) @db.Timestamptz(3)
+  endedAt        DateTime? @db.Timestamptz(3)
+  // true = a visita contou (ficou o mínimo e encerrou sozinho o visitante).
+  completed      Boolean   @default(false)
+  // Distância do aparelho ao ponto no momento do check-in. A posição em si não é guardada.
+  distanceMeters Int
+  benefitCents   Int       @default(0)
+
+  point   WelcomePoint  @relation(fields: [pointId], references: [id])
+  user    User          @relation(fields: [userId], references: [id])
+  ratings PointRating[]
+
+  @@index([pointId, startedAt])
+  @@index([userId, startedAt])
+}
+
+model PointRating {
+  id        String               @id @default(uuid())
+  checkInId String
+  direction PointRatingDirection
+  authorId  String
+  stars     Int
+  comment   String?
+  createdAt DateTime             @default(now()) @db.Timestamptz(3)
+
+  checkIn CheckIn @relation(fields: [checkInId], references: [id])
+  author  User    @relation("PointRatingAuthor", fields: [authorId], references: [id])
+
+  @@unique([checkInId, direction])
+  @@index([authorId])
+}
+
+model PointReport {
+  id           String              @id @default(uuid())
+  pointId      String
+  reporterId   String
+  category     PointReportCategory
+  text         String?
+  status       PointReportStatus   @default(ABERTA)
+  resolvedById String?
+  resolvedAt   DateTime?           @db.Timestamptz(3)
+  response     String?
+  createdAt    DateTime            @default(now()) @db.Timestamptz(3)
+
+  point    WelcomePoint @relation(fields: [pointId], references: [id])
+  reporter User         @relation("PointReporter", fields: [reporterId], references: [id])
+
+  @@index([pointId, status])
+  @@index([status, createdAt])
+}
+
+// Linha do tempo do ponto (somente inserção): cadastro, aprovação, suspensão, remoção.
+model PointEvent {
+  id         String       @id @default(uuid())
+  pointId    String
+  // null = o sistema (suspensão automática).
+  actorId    String?
+  fromStatus PointStatus?
+  toStatus   PointStatus
+  note       String?
+  createdAt  DateTime     @default(now()) @db.Timestamptz(3)
+
+  point WelcomePoint @relation(fields: [pointId], references: [id], onDelete: Cascade)
+
+  @@index([pointId, createdAt])
 }

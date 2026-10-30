@@ -153,6 +153,23 @@ Motorista `+5583999990003` (12 cotas no seed) e, para comparar, `...0007` (35 co
 - [ ] Peça ao admin para analisar e decidir (API): a linha do tempo ganha “Em análise” e depois “Aprovado/Negado” com o **motivo escrito por uma pessoa**; aprovado mostra o valor aprovado e os botões de anexar/cancelar somem.
 - [ ] **Sobras:** depois de o admin fechar um ano, o resumo lista “Sobras de AAAA”, o valor e o peso do uso.
 
+### Roteiro I — Pontos de acolhida (Etapa 9)
+
+Rode `pnpm db:seed` (cria 4 pontos de exemplo em João Pessoa: praça, padaria, casa aprovada e casa em análise). Entre como motorista (`...0003`) e abra a aba **Acolhida**. Para testar longe de João Pessoa, as posições do seed ficam em torno de `-7.11, -34.85`; no emulador, ajuste a localização para lá. Um segundo aparelho/usuário (motorista `...0007`) serve para o “outro lado” das avaliações.
+
+- [ ] **Mapa:** o aparelho pede a permissão de localização; os pontos aparecem como marcadores e em lista, do mais perto ao mais longe, com tipo, bairro, distância, comodidades, nota e “Aberto agora/Fechado agora”. Sem permissão, o app avisa e mostra perto do centro de João Pessoa.
+- [ ] **Filtros:** tipo, comodidades (precisa ter todas), distância (1/3/5/10 km), “Aberto agora” e nota mínima mudam a lista; tirar o filtro volta os pontos. Sem resultado: mensagem sugerindo afrouxar.
+- [ ] **Casa parceira:** no detalhe, o endereço **não aparece** (“o endereço completo aparece quando você fizer o check-in”) e a posição no mapa é aproximada.
+- [ ] **Check-in:** perto do ponto (≤ 200 m), “Fazer check-in aqui” abre a faixa “Você está em …” no topo, com o endereço completo da casa. Longe: erro “… a até 200 m (está a N m)”. Fechado ou lotado: botão sem efeito. Segundo check-in com um aberto: recusado.
+- [ ] **Sair antes de 5 min:** “Visita muito curta… não conta”, sem avaliação. **Sair depois de 5 min** (pode simular recuando a hora do check-in no banco): abre “Avalie o ponto”; sem estrelas pede a nota; enviada, some.
+- [ ] **Visitas:** aba Visitas lista o histórico; visita que contou ganha “Avaliar este ponto”; depois de avaliada mostra “Você avaliou”.
+- [ ] **Cadastrar:** escolher o tipo; “Usar a minha localização agora” (e “Buscar pelo endereço”) marca a posição; cada campo que falta mostra a mensagem certa. **Comércio/espaço público** publicam na hora. **Casa parceira** mostra o checklist (todos os 6 itens obrigatórios) e o benefício (crédito ou desconto) e vai para “Enviado para análise”.
+- [ ] **Aprovação (API):** `POST /admin/welcome-points/:id/approve` com as duas conferências marcadas; só então a casa aparece no mapa dos outros. Em “Meus”, a situação passa de “Em análise” para “No mapa”. Recusar mostra o motivo escrito pelo admin.
+- [ ] **Meus pontos:** enviar foto da galeria (até 6) e vê-la no detalhe; trocar o benefício; “Remover ponto” pede confirmação.
+- [ ] **Anfitrião avalia o visitante:** depois de uma visita que contou, “Meus → ponto” lista a visita com o primeiro nome e a média do visitante; avaliar com estrelas e comentário. Só uma vez.
+- [ ] **Benefício:** a cada visita que conta na casa parceira, o saldo do anfitrião sobe R$ 1,00 (crédito) até R$ 30,00 no mês (confira em `LedgerTransaction` kind `HOST_BENEFIT` ou na aba Ganhos de quem é motorista).
+- [ ] **Denúncia:** “Denunciar este ponto” exige o motivo; depois de enviada aparece em Visitas → Minhas denúncias como “Em análise”. Uma denúncia de **Segurança** ou **Assédio** tira o ponto do mapa na hora (o dono vê “Suspenso” e o motivo); o admin resolve em `POST /admin/welcome-reports/:id/resolve` e a resposta aparece para quem denunciou.
+
 ## 4. Problemas comuns
 
 | Sintoma                              | Causa provável                                                                                                                                |
@@ -168,6 +185,6 @@ Motorista `+5583999990003` (12 cotas no seed) e, para comparar, `...0007` (35 co
 
 ```
 pnpm --filter @amma/shared build
-pnpm --filter @amma/mobile test       # Jest: 193 testes (motorista e cliente): componentes, hooks, provider e WebSocket
+pnpm --filter @amma/mobile test       # Jest: 265 testes (motorista, cliente, associação e acolhida): componentes, hooks, provider e WebSocket
 pnpm --filter @amma/mobile typecheck && pnpm lint
 ```

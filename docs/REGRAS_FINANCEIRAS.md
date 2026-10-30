@@ -113,3 +113,20 @@ Código: `packages/shared/src/{membership,assembly,group-purchase,insurance,surp
   - **Sócios do ano:** quem tinha ≥ 1 cota **no fim do ano** (fuso UTC−3) e conta ativa. **Uso** = soma do valor bruto (`fareCents`) das entregas e corridas `ENTREGUE` no ano.
   - **Parte** = `total × ( p_uso × uso_i/Σuso + (100 − p_uso) × cotas_i/Σcotas ) ÷ 100`, em aritmética inteira exata (BigInt). Os centavos que sobram do arredondamento vão, um a um, para os **maiores restos** (empate: id), então a soma das partes é **sempre igual ao total**. `p_uso` padrão: 50%. Sem nenhum uso no ano, tudo vai pelas cotas.
   - **Simulação obrigatória:** o fechamento exige o `checksum` da simulação e só vale depois do fim do ano, uma vez por ano. Fechado, não muda (gatilho no banco); corrigir = lançamento novo, com decisão da associação.
+
+## 9. Pontos de acolhida (Etapa 9)
+
+Código: `packages/shared/src/welcome-point.ts` e `ledger.ts`; serviço em `apps/api/src/welcome`. **Nenhum dinheiro se move**: o benefício é um registro contábil da associação ao anfitrião, como as cotas.
+
+- **Quando rende:** só na **casa parceira**, quando a visita conta (check-in de 5 min ou mais, encerrado pelo visitante) e o ponto ainda existe. Check-in que expirou sozinho (4 h) não rende.
+- **Quanto:** `HOST_BENEFIT_PER_VISIT_CENTS` = R$ 1,00 por visita, até `HOST_BENEFIT_MONTHLY_CAP_CENTS` = R$ 30,00 **por ponto por mês** (mês de João Pessoa, UTC−3). A última visita do mês rende só o que falta para o teto; depois disso, 0 e nenhum lançamento. **Valores de exemplo**, a associação define.
+- **Lançamento** (`HOST_BENEFIT`, referência = id do check-in, então a mesma visita nunca paga duas vezes), gravado na mesma transação que encerra o check-in:
+  ```
+  DÉBITO  ASSOCIATION_HOST_BENEFITS           valor   (custo da associação)
+  CRÉDITO WORKER_BALANCE:<anfitrião>          valor   se benefitKind = CREDITO
+  CRÉDITO HOST_DISCOUNT:<anfitrião>           valor   se benefitKind = DESCONTO
+  ```
+  - **Crédito** entra no mesmo saldo a pagar dos ganhos (`WORKER_BALANCE`), então o anfitrião só o enxerga se tiver também o app do motorista (que mostra o saldo).
+  - **Desconto** fica numa conta própria (`HOST_DISCOUNT`) e **ainda não é abatido de nenhuma taxa**: falta a regra de onde aplicar (ver pendências da Etapa 9 em `docs/PROGRESSO.md`).
+  - Não toca em cotas, nem no `PLATFORM_REVENUE`.
+- **Teto sob concorrência:** a saída trava a linha do ponto (`FOR UPDATE`) antes de somar o que já foi pago no mês, então duas saídas simultâneas não estouram o teto.

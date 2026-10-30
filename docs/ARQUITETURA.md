@@ -111,6 +111,15 @@ Não há módulo paralelo: a corrida **é** um `Delivery` com `kind = CORRIDA` (
 | `api/src/association`                                                                    | Módulo próprio: `MembersService` (cotas/sócios do ledger), `AssemblyService`, `GroupPurchaseService` + `PurchasePartner` (parceiro simulado), `InsuranceService`, `SurplusService`, agendador de fechamento |
 | `mobile/src/association`                                                                 | Aba “AMMA” do app do motorista: resumo, assembleia, compra coletiva e seguro (cada seção usa `useLoad`)                                                                                                     |
 
+## Pontos de acolhida (Etapa 9)
+
+| Onde                      | Responsabilidade                                                                                                                                                                                                               |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `shared/welcome-point.ts` | Regras puras: tipos e status, horário (`validateHours`, `isOpenAt`), checklist da casa, raio e tempos do check-in, benefício e teto mensal, quando suspender (`suspensionReason`), posição aproximada e filtros do mapa        |
+| `shared/ledger.ts`        | `buildHostBenefit` (novas contas `ASSOCIATION_HOST_BENEFITS` e `HOST_DISCOUNT`, tipo `HOST_BENEFIT`)                                                                                                                           |
+| `api/src/welcome`         | Módulo próprio: `PointsService` (cadastro, fotos, mapa, visão por pessoa), `CheckInService` (check-in, saída com benefício, avaliação dos dois lados), `ModerationService` (denúncia, suspensão automática, decisões do admin) |
+| `mobile/src/welcome`      | Aba “Acolhida” do app do motorista: mapa e filtros, detalhe com check-in e denúncia, cadastro (com checklist), meus pontos e visitas                                                                                           |
+
 ## Testes
 
 - `pnpm test` — unitários, sem banco (shared e api).

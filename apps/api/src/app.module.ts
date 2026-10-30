@@ -12,6 +12,7 @@ import { DriverService } from './driver/driver.service';
 import { LegalController } from './legal/legal.controller';
 import { MerchantController } from './merchant/merchant.controller';
 import { MerchantService } from './merchant/merchant.service';
+import { WelcomeModule } from './welcome/welcome.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { MerchantService } from './merchant/merchant.service';
     AuthModule,
     DeliveryModule,
     AssociationModule,
+    WelcomeModule,
   ],
   controllers: [
     AppController,

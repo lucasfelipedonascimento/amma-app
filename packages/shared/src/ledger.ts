@@ -26,9 +26,14 @@ export const partnerGroupAccount = (groupId: string) => `PARTNER_GROUP:${groupId
 export const memberGroupAccount = (groupId: string, userId: string) =>
   `MEMBER_GROUP:${groupId}:${userId}`;
 
+/** Benefícios pagos a anfitriões de pontos de acolhida (devedora): custo da associação. */
+export const ASSOCIATION_HOST_BENEFITS = 'ASSOCIATION_HOST_BENEFITS';
+/** Desconto acumulado do anfitrião para abater taxas (credora). Não é saldo a pagar em dinheiro. */
+export const hostDiscountAccount = (userId: string) => `HOST_DISCOUNT:${userId}`;
+
 export type Direction = 'DEBIT' | 'CREDIT';
 export type LedgerKind =
-  'RIDE_SETTLEMENT' | 'REVERSAL' | 'GROUP_CONTRIBUTION' | 'SURPLUS_DISTRIBUTION';
+  'RIDE_SETTLEMENT' | 'REVERSAL' | 'GROUP_CONTRIBUTION' | 'SURPLUS_DISTRIBUTION' | 'HOST_BENEFIT';
 
 export interface Posting {
   readonly account: string;
@@ -127,6 +132,34 @@ export function buildSurplusDistribution(input: {
         direction: 'CREDIT' as const,
         amountCents: s.amountCents,
       })),
+    ],
+  };
+}
+
+/** Benefício de uma visita ao ponto: crédito no saldo do anfitrião ou desconto acumulado. */
+export function buildHostBenefit(input: {
+  id: string;
+  checkInId: string;
+  hostId: string;
+  kind: 'CREDITO' | 'DESCONTO';
+  amountCents: Cents;
+  createdAt: string;
+}): LedgerTransaction {
+  return {
+    id: input.id,
+    kind: 'HOST_BENEFIT',
+    reference: input.checkInId,
+    createdAt: input.createdAt,
+    postings: [
+      { account: ASSOCIATION_HOST_BENEFITS, direction: 'DEBIT', amountCents: input.amountCents },
+      {
+        account:
+          input.kind === 'CREDITO'
+            ? workerBalanceAccount(input.hostId)
+            : hostDiscountAccount(input.hostId),
+        direction: 'CREDIT',
+        amountCents: input.amountCents,
+      },
     ],
   };
 }

@@ -633,3 +633,78 @@ Todas as rotas `/association`, `/assembly`, `/purchase-groups` e `/insurance` s�
 ### 14.6 Variáveis e migração
 
 `PURCHASE_PARTNER` (padrão `sandbox`) e `ASSOCIATION_TICK_MS` (padrão `30000`; `0` desliga a rotina — usado nos testes). Migração `20261101120000_associacao`: tabelas de assembleia (`Proposal`, `Vote`, `VoteRecord`, `PurchaseRulesVersion`), compra coletiva (`PurchaseGroup`, `QueueEntry`, `Contribution`, `GroupAward`), seguro (`InsuranceClaim`, `InsuranceAttachment`, `InsuranceEvent`), sobras (`SurplusRun`, `SurplusShare`) e os tipos de ledger `GROUP_CONTRIBUTION` e `SURPLUS_DISTRIBUTION`. O banco **recusa** apagar/alterar: histórico de votos, versões de regras, contemplações, linha do tempo do seguro e sobras; proposta encerrada; voto de proposta encerrada.
+
+## 15. Pontos de acolhida (Etapa 9)
+
+Rotas `/welcome-points/...` valem para qualquer pessoa logada, salvo as marcadas; `/admin/welcome-...` são de `ADMIN`. Erros no mesmo formato das outras seções. Tipos: `ESPACO_PUBLICO`, `CASA_PARCEIRA`, `COMERCIO`. Comodidades: `AGUA`, `BANHEIRO`, `CARREGADOR`, `DESCANSO`, `WIFI`, `ALIMENTACAO`, `ESTACIONAMENTO`. Status: `EM_ANALISE`, `ATIVO`, `SUSPENSO`, `RECUSADO`, `REMOVIDO`.
+
+### 15.1 Cadastro
+
+| Rota                              | Quem  | O que faz                                                                                                                                                                                                                                                        |
+| --------------------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /welcome-points/rules`       | todos | Tipos, comodidades, capacidade máxima e número máximo de fotos.                                                                                                                                                                                                  |
+| `POST /welcome-points`            | todos | `{ type, name, address, neighborhood, reference?, description?, lat, lng, hours, amenities[], capacity (1–50), benefitKind?, checklist? }`. `COMERCIO` e `ESPACO_PUBLICO` nascem `ATIVO`; `CASA_PARCEIRA` nasce `EM_ANALISE` e **exige o `checklist` completo**. |
+| `PATCH /welcome-points/:id`       | dono  | Só `name`, `description`, `reference`, `hours`, `amenities`, `capacity`, `benefitKind`. Endereço, posição e tipo exigem novo cadastro (`400` se enviados).                                                                                                       |
+| `DELETE /welcome-points/:id`      | dono  | Remove o ponto (`REMOVIDO`), apaga as fotos e libera quem estava lá. `204`.                                                                                                                                                                                      |
+| `GET /welcome-points/mine`        | todos | Os seus pontos (menos removidos), com status, motivo, checklist e benefício.                                                                                                                                                                                     |
+| `POST /welcome-points/:id/photos` | dono  | Multipart `file` (JPG ou PNG, até 5 MB, tipo conferido pelo conteúdo, máx. 6). `GET .../photos/:photoId` baixa (qualquer logado se o ponto está `ATIVO`; dono e admin sempre); `DELETE .../photos/:photoId` apaga (dono).                                        |
+
+- `hours` = `{ "always": true, "slots": [] }` (24 h) ou `{ "always": false, "slots": [{ "days": [1,2,3,4,5], "open": "08:00", "close": "18:00" }] }` (`days` 0 = domingo … 6 = sábado, horário de João Pessoa; `close` menor que `open` vira a noite; até 14 faixas).
+- `checklist` (só casa parceira; rejeitado nos outros tipos): `{ RESPONSAVEL_MAIOR, AREA_SEPARADA, BANHEIRO_ACESSIVEL, ENTRADA_ILUMINADA, SEM_COBRANCA, CODIGO_DE_CONDUTA }`, todos `true`. O texto de cada item está em `shared/welcome-point.ts` (`HOUSE_CHECKLIST`).
+- Limites: 3 cadastros por 24 h, 10 pontos vivos por pessoa, e `409` se já existe ponto do mesmo tipo a menos de 30 m.
+
+### 15.2 Mapa
+
+- `GET /welcome-points?lat=&lng=&radiusMeters=&types=&amenities=&openNow=&minRating=` → pontos `ATIVO` ao redor, **do mais perto**, no máximo 100. `lat` e `lng` são obrigatórios; `radiusMeters` de 100 a 30000 (padrão 5000); `types` e `amenities` separados por vírgula (a comodidade exige **todas**); `openNow=true`; `minRating` de 1 a 5 (ponto sem média ainda passa).
+- `GET /welcome-points/:id?lat=&lng=` → o ponto (com `distanceMeters` se mandar a posição). Ponto que não está `ATIVO` só o dono e o admin enxergam (`404` para os outros).
+- **Visão do ponto:** `{ id, type, name, description, neighborhood, address, reference, lat, lng, approximate, hours, openNow, amenities, capacity, occupied, photos[], rating: { average, count }, hasHost, isOwner, distanceMeters? }` e, **só para o dono e o admin**, `status`, `statusNote`, `benefitKind`, `checklist`.
+- **Casa parceira:** `address` e `reference` vêm `null` e `lat`/`lng` vêm **arredondados (~110 m)** com `approximate: true`, exceto para o dono, o admin e quem está com check-in aberto lá.
+- **Nota:** `average` só aparece com 3 ou mais avaliações (arredondada para baixo). Comentários nunca aparecem para ninguém, só para o admin.
+
+### 15.3 Check-in e avaliação dos dois lados
+
+| Rota                                                     | Quem        | O que faz                                                                                                                                                                                                                  |
+| -------------------------------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /welcome-points/:id/check-in`                      | `MOTORISTA` | `{ lat, lng }` do aparelho. `201 { checkIn, point }` (com o endereço completo). `409` se: a mais de 200 m, ponto fechado, lotado, já há check-in aberto, ou visita ao mesmo ponto há menos de 6 h. `403` para o anfitrião. |
+| `GET /welcome-points/check-ins/active`                   | `MOTORISTA` | `{ checkIn, point }` ou `{ checkIn: null, point: null }`. Fecha antes os que passaram de 4 h.                                                                                                                              |
+| `POST /welcome-points/check-ins/:checkInId/end`          | `MOTORISTA` | Sai do ponto. Com **5 min ou mais** a visita conta (`completed`, `canRate`) e, na casa parceira, gera o benefício. `409` se já encerrado.                                                                                  |
+| `GET /welcome-points/check-ins/mine`                     | `MOTORISTA` | Últimas 30 visitas encerradas, com `rated` e `canRate`.                                                                                                                                                                    |
+| `POST /welcome-points/check-ins/:checkInId/rate`         | `MOTORISTA` | `{ stars: 1–5, comment? }` — avalia o **ponto**. Só visita que contou, até 7 dias depois, uma vez (`409`).                                                                                                                 |
+| `POST /welcome-points/check-ins/:checkInId/rate-visitor` | anfitrião   | Mesmo corpo — o anfitrião avalia o **visitante**. `403` em espaço público (sem anfitrião); `404` se o ponto não é seu.                                                                                                     |
+| `GET /welcome-points/:id/visits`                         | dono        | Visitas que contaram nos últimos 30 dias: `{ id, endedAt, minutes, visitorName (só o primeiro nome), visitorRating, rated, canRate }`.                                                                                     |
+
+- A **posição do aparelho não é guardada**; só a distância no momento do check-in.
+- O check-in aberto fecha sozinho depois de 4 h, **sem benefício** e sem contar como visita.
+
+### 15.4 Benefício do anfitrião
+
+- Só **casa parceira**, quando a visita conta: **R$ 1,00 por visita**, no máximo **R$ 30,00 por ponto por mês** (mês de João Pessoa); o que passar do teto rende 0. Valores de exemplo (`shared/welcome-point.ts`).
+- `benefitKind` (escolha do anfitrião, `PATCH`): `CREDITO` → lançamento no saldo do anfitrião; `DESCONTO` → desconto acumulado para abater taxas. Ver `docs/REGRAS_FINANCEIRAS.md`, seção 9.
+
+### 15.5 Denúncia e remoção
+
+| Rota                               | Quem  | O que faz                                                                                                                                                                                                              |
+| ---------------------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /welcome-points/:id/reports` | todos | `{ category: SEGURANCA \| ASSEDIO \| COBRANCA_INDEVIDA \| LOCAL_INEXISTENTE \| ESTRUTURA_DIFERENTE \| OUTRO, text? (até 1000) }`. `409` se já há uma aberta sua nesse ponto ou passou de 5 no dia; `403` no seu ponto. |
+| `GET /welcome-points/reports/mine` | todos | Suas denúncias com a situação (`ABERTA`, `PROCEDENTE`, `IMPROCEDENTE`) e a resposta da associação. Nunca o texto de outras pessoas.                                                                                    |
+
+**Suspensão automática** (o ponto sai do mapa, quem estava lá é liberado e fica `SUSPENSO` com o motivo em `statusNote`): uma denúncia **grave** (`SEGURANCA`, `ASSEDIO`); **3 pessoas diferentes** com denúncia aberta; ou **média abaixo de 2,0 com 5 ou mais avaliações do ponto**. Roda a cada denúncia e a cada nota. O sistema só suspende — remover é decisão do admin.
+
+### 15.6 Administrador (`ADMIN`)
+
+| Rota                                       | O que faz                                                                                                                                                |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /admin/welcome-points?status=`        | Fila de pontos (mais antigos primeiro), com o dono e o número de denúncias abertas.                                                                      |
+| `GET /admin/welcome-points/:id`            | Tudo: endereço, checklist, dono (nome e telefone), linha do tempo, denúncias com texto e as avaliações **com comentário**.                               |
+| `POST /admin/welcome-points/:id/approve`   | `{ identityChecked: true, placeChecked: true, note? }` — `EM_ANALISE → ATIVO`. Sem as duas conferências, `400`.                                          |
+| `POST /admin/welcome-points/:id/refuse`    | `{ note }` — `EM_ANALISE → RECUSADO`.                                                                                                                    |
+| `POST /admin/welcome-points/:id/remove`    | `{ note }` — `EM_ANALISE`, `ATIVO` ou `SUSPENSO` → `REMOVIDO`. Final.                                                                                    |
+| `POST /admin/welcome-points/:id/reinstate` | `{ note }` — `SUSPENSO → ATIVO`. `409` enquanto houver denúncia aberta sobre o ponto.                                                                    |
+| `GET /admin/welcome-reports?status=`       | Denúncias (padrão `ABERTA`): **graves primeiro**, depois as mais antigas; com texto, denunciante e ponto.                                                |
+| `POST /admin/welcome-reports/:id/resolve`  | `{ outcome: PROCEDENTE \| IMPROCEDENTE, response, removePoint? }`. `removePoint` só com `PROCEDENTE` e remove o ponto junto. Resolve uma vez só (`409`). |
+
+- Motivo (`note`/`response`) é **obrigatório** (mín. 5 caracteres) em recusar, remover, reativar e resolver. Quem cadastrou o ponto **não decide** sobre ele nem sobre denúncias dele (`403`). Todo passo vira linha da linha do tempo (`PointEvent`), imutável.
+
+### 15.7 Migração e dados
+
+Migração `20261102120000_pontos_acolhida`: `WelcomePoint`, `WelcomePointPhoto`, `CheckIn`, `PointRating`, `PointReport`, `PointEvent` e o tipo de lançamento `HOST_BENEFIT`. Garantias no banco: nota 1–5, capacidade 1–50, coordenadas válidas, **um check-in aberto por pessoa**, **uma denúncia aberta por pessoa em cada ponto** e `PointEvent` somente inserção. Não há variável de ambiente nova. O seed cria 4 pontos de exemplo (praça, padaria, casa aprovada e casa em análise).

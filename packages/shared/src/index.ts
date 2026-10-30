@@ -25,3 +25,4 @@ export * from './assembly';
 export * from './group-purchase';
 export * from './insurance';
 export * from './surplus';
+export * from './welcome-point';

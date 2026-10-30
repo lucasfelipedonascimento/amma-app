@@ -319,3 +319,44 @@ Variáveis novas (opcionais): `PURCHASE_PARTNER=sandbox` e `ASSOCIATION_TICK_MS=
 - **Votos nominais** ficam no banco para auditoria; definir quem acessa e como se registra (ver `docs/LGPD.md`).
 - Rotina de fechamento roda a cada 30 s; a proposta também fecha ao ser lida. Sem notificação de resultado.
 - Herdadas das etapas anteriores: sem provedor de pagamento real, sem estorno persistido de corrida concluída, WebSocket em memória, sem fonte Outfit/ícone/tema escuro.
+
+## Etapa 9 — Pontos de acolhida ✅ (sem teste em celular real)
+
+**Feito** (detalhes em `docs/API.md` seção 15, `docs/REGRAS_FINANCEIRAS.md` seção 9, `docs/DECISOES.md` e `docs/MOBILE.md` roteiro I)
+
+- **Cadastro:** espaço público, casa parceira e comércio, com nome, endereço, bairro, referência, **horário** (24 h ou faixas por dia, inclusive a que vira a noite), **comodidades** (água, banheiro, carregador, descanso, Wi-Fi, comida, estacionamento), **capacidade** (1–50) e até **6 fotos** (JPG/PNG). O dono edita horário, comodidades, capacidade e benefício, e pode remover o ponto.
+- **Mapa:** pontos ao redor com filtros por **tipo, comodidades, distância, aberto agora e nota mínima**, ordenados do mais perto, com lotação (`occupied` de `capacity`) e nota (média a partir de 3 avaliações).
+- **Check-in:** só do motorista, a até 200 m do ponto, ponto aberto e com vaga, um por vez, 6 h entre visitas ao mesmo ponto; fecha sozinho em 4 h; só conta com 5 min ou mais. A posição do aparelho não é guardada.
+- **Avaliação dos dois lados:** o motorista avalia o ponto; o anfitrião avalia o motorista (uma por visita e direção, até 7 dias). Mesma privacidade das corridas: ninguém vê o comentário que recebeu.
+- **Casa parceira:** **checklist de segurança** (6 itens obrigatórios) → fila de análise → **aprovação do admin** só com identidade e local conferidos (motivo e linha do tempo imutável; quem cadastrou não decide a própria casa). No mapa aparece só o bairro e uma posição aproximada; o endereço completo vai ao dono, ao admin e a quem está com check-in lá.
+- **Benefício ao anfitrião:** R$ 1,00 por visita que conta, teto de R$ 30,00 por ponto por mês, em **crédito** (saldo) ou **desconto** acumulado, como lançamento `HOST_BENEFIT` no ledger na mesma transação da saída.
+- **Denúncia e remoção:** denúncia com categoria (uma aberta por pessoa por ponto, 5 por dia); **suspensão automática** por denúncia grave, 3 denunciantes ou nota média < 2,0 com 5+ avaliações; o admin resolve a denúncia (e pode remover junto), remove, ou reativa um ponto suspenso, sempre com motivo. Quem denunciou acompanha a resposta.
+- **App:** aba **Acolhida** no app do motorista (Mapa · Cadastrar · Meus · Visitas), com o check-in aberto e “Sair do ponto” no topo.
+- **LGPD:** exclusão de conta remove nome/endereço/checklist/fotos dos pontos da pessoa e apaga seus comentários de avaliação; ver `docs/LGPD.md`.
+- **Seed:** 4 pontos de exemplo (praça, padaria, casa aprovada, casa em análise).
+- **Testes:** shared **253** (+21), api **67** unitários e **329** de integração (+44), mobile **265** (+32). Bundle Android conferido com `expo export`.
+
+**Como rodar**
+
+```
+pnpm install && pnpm db:up
+cd apps/api && pnpm prisma:deploy && pnpm db:seed && cd ../..     # migração nova: pontos_acolhida
+pnpm build && pnpm test && pnpm lint && pnpm typecheck
+pnpm --filter @amma/api test:int
+pnpm --filter @amma/mobile test
+```
+
+Sem variável de ambiente nova. Roteiro no celular: `docs/MOBILE.md` roteiro I.
+
+**Falta / pendências**
+
+- **Decisões da associação que o código assumiu (exemplos a confirmar):** quem pode cadastrar ponto (hoje qualquer pessoa logada; só o admin aprova casa); o valor do benefício (R$ 1,00/visita, teto R$ 30,00/mês por ponto) e se vale também para comércio; os limites de suspensão (grave, 3 denunciantes, média < 2,0 com 5 notas); o raio de 200 m, os 5 min mínimos, as 4 h e as 6 h entre visitas; os itens do checklist.
+- **O desconto não abate nada ainda:** `HOST_DISCOUNT` só acumula. Falta definir de onde sai (taxa base? taxa de associação? corridas do anfitrião, que pode nem ser motorista) e como se aplica. O **crédito** cai em `WORKER_BALANCE`, que só tem tela no app do motorista.
+- **Conferência da casa é manual e fora do app:** o admin marca “identidade conferida” e “local conferido”, mas o sistema não guarda documento nem foto dessa conferência. Definir o procedimento (visita? documento? foto da fachada?) antes de operar.
+- **Anti-fraude do benefício é básico:** raio de 200 m, 5 min, 6 h entre visitas, teto mensal e anfitrião ≠ visitante. Combinar dois aparelhos/contas (visitante e anfitrião da mesma pessoa) não é detectado; a posição do aparelho pode ser falsificada.
+- **Posição aproximada ≠ anonimato:** quem faz check-in vê o endereço completo e o anfitrião vê o primeiro nome do visitante. Rever o aviso ao anfitrião na política (ver `docs/LGPD.md`).
+- **Admin só por API:** aprovar, recusar, remover, reativar e resolver denúncias não têm painel (`apps/admin` segue pendente) e **não há aviso** ao admin de casa nova ou denúncia grave (o admin precisa consultar a fila) nem ao dono quando o ponto é suspenso, aprovado ou recusado (ele vê ao abrir “Meus”).
+- **App:** horário de funcionamento só por modelos prontos; posição do ponto marcada pela localização atual ou pelo geocodificador do aparelho (sem arrastar o pino); fotos só da galeria; sem rota até o ponto (abrir no app de mapas); sem “favoritos” nem aviso de ponto novo por perto. Nada testado em aparelho físico (roteiro I).
+- **Mapa:** raio por faixa de latitude/longitude em `Float` e distância em `shared`, sem índice espacial. Com milhares de pontos, migrar para uma coluna PostGIS.
+- **Ponto sem anfitrião não tem “dono” operacional:** espaço público cadastrado por alguém fica sob o cadastrante (que pode editar/remover) e, se a pessoa excluir a conta, o ponto é removido. Definir se o admin “adota” esses pontos.
+- Herdadas das etapas anteriores: sem provedor de pagamento real, parceiro de compra/seguro e fundo ainda por definir, WebSocket em memória, sem fonte Outfit/ícone/tema escuro.

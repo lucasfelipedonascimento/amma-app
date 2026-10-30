@@ -166,6 +166,101 @@ async function association() {
   }
 }
 
+/** Pontos de acolhida de exemplo em João Pessoa (o id fixo deixa repetir o seed sem duplicar). */
+async function welcomePoints() {
+  const merchant = await prisma.user.findUniqueOrThrow({ where: { phone: '+5583999990006' } });
+  const passenger = await prisma.user.findUniqueOrThrow({ where: { phone: '+5583999990002' } });
+  const admin = await prisma.user.findUniqueOrThrow({ where: { phone: '+5583999990001' } });
+  const always = { always: true, slots: [] };
+  const weekdays = {
+    always: false,
+    slots: [{ days: [1, 2, 3, 4, 5, 6], open: '07:00', close: '19:00' }],
+  };
+  const checklist = {
+    RESPONSAVEL_MAIOR: true,
+    AREA_SEPARADA: true,
+    BANHEIRO_ACESSIVEL: true,
+    ENTRADA_ILUMINADA: true,
+    SEM_COBRANCA: true,
+    CODIGO_DE_CONDUTA: true,
+  };
+  const points = [
+    {
+      id: '00000000-0000-4000-8000-0000000000a1',
+      ownerId: admin.id,
+      type: 'ESPACO_PUBLICO' as const,
+      status: 'ATIVO' as const,
+      name: 'Praça de Tambaú',
+      address: 'Av. Almirante Tamandaré, Tambaú',
+      neighborhood: 'Tambaú',
+      lat: -7.1183,
+      lng: -34.8236,
+      hours: always,
+      amenities: ['AGUA' as const, 'BANHEIRO' as const, 'DESCANSO' as const],
+      capacity: 20,
+    },
+    {
+      id: '00000000-0000-4000-8000-0000000000a2',
+      ownerId: merchant.id,
+      type: 'COMERCIO' as const,
+      status: 'ATIVO' as const,
+      name: 'Padaria Boa Hora',
+      address: 'Rua Rodrigues de Aquino, 120',
+      neighborhood: 'Centro',
+      lat: -7.1195,
+      lng: -34.8814,
+      hours: weekdays,
+      amenities: [
+        'AGUA' as const,
+        'BANHEIRO' as const,
+        'CARREGADOR' as const,
+        'ALIMENTACAO' as const,
+      ],
+      capacity: 6,
+    },
+    {
+      id: '00000000-0000-4000-8000-0000000000a3',
+      ownerId: passenger.id,
+      type: 'CASA_PARCEIRA' as const,
+      status: 'ATIVO' as const,
+      name: 'Casa da Dona Maria',
+      address: 'Rua das Acácias, 45',
+      neighborhood: 'Manaíra',
+      lat: -7.0996,
+      lng: -34.8338,
+      hours: weekdays,
+      amenities: ['AGUA' as const, 'BANHEIRO' as const, 'CARREGADOR' as const, 'DESCANSO' as const],
+      capacity: 3,
+      checklist,
+    },
+    {
+      id: '00000000-0000-4000-8000-0000000000a4',
+      ownerId: passenger.id,
+      type: 'CASA_PARCEIRA' as const,
+      status: 'EM_ANALISE' as const,
+      name: 'Casa do Seu João (em análise)',
+      address: 'Rua dos Coqueiros, 12',
+      neighborhood: 'Bessa',
+      lat: -7.0722,
+      lng: -34.8269,
+      hours: always,
+      amenities: ['AGUA' as const, 'BANHEIRO' as const],
+      capacity: 2,
+      checklist,
+    },
+  ];
+  for (const p of points) {
+    await prisma.welcomePoint.upsert({
+      where: { id: p.id },
+      update: {},
+      create: {
+        ...p,
+        events: { create: { actorId: p.ownerId, toStatus: p.status, note: 'Exemplo do seed' } },
+      },
+    });
+  }
+}
+
 async function main() {
   await pricing();
   await ridePricing();
@@ -201,8 +296,9 @@ async function main() {
     { vehicle: 'CARRO', woman: true },
   );
   await association();
+  await welcomePoints();
   console.log(
-    'Seed concluído. Telefones: admin ...0001, passageira ...0002, aprovado (moto) ...0003, pendente ...0004, reprovado ...0005, comerciante ...0006, motorista de carro (mulher verificada) ...0007. Sócios de exemplo (com cotas): ...0003 e ...0007',
+    'Seed concluído. Telefones: admin ...0001, passageira ...0002, aprovado (moto) ...0003, pendente ...0004, reprovado ...0005, comerciante ...0006, motorista de carro (mulher verificada) ...0007. Sócios de exemplo (com cotas): ...0003 e ...0007. Pontos de acolhida de exemplo: praça, padaria, casa aprovada e casa em análise (da passageira ...0002)',
   );
 }
 

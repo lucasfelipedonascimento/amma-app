@@ -29,6 +29,10 @@ Passageiro/cliente, entregador/motorista, comerciante e administrador da associa
 
 Locais com água, banheiro e carregador; mapa, filtro, check-in e avaliação.
 
+- Três tipos: **espaço público**, **casa parceira** e **comércio**. A casa parceira passa por checklist de segurança e aprovação da associação, e o anfitrião ganha um benefício (crédito ou desconto).
+- Check-in só perto do ponto; avaliação dos dois lados (o motorista avalia o ponto, o anfitrião avalia o motorista).
+- Denúncia e remoção de pontos mal avaliados ou denunciados. Detalhes e decisões em `docs/API.md` (seção 15) e `docs/DECISOES.md`.
+
 ### Limites regulatórios
 
 - O app **NÃO capta dinheiro nem faz crédito** por conta própria.

@@ -20,6 +20,13 @@ import {
   PAYMENT_STATUSES,
   RIDE_STATUSES,
   ROLES,
+  AMENITIES,
+  HOST_BENEFIT_KINDS,
+  POINT_RATING_DIRECTIONS,
+  POINT_REPORT_CATEGORIES,
+  POINT_REPORT_STATUSES,
+  POINT_STATUSES,
+  POINT_TYPES,
 } from '@amma/shared';
 import {
   ApprovalStatus,
@@ -42,6 +49,13 @@ import {
   PaymentStatus,
   RideStatus,
   Role,
+  Amenity,
+  HostBenefitKind,
+  PointRatingDirection,
+  PointReportCategory,
+  PointReportStatus,
+  PointStatus,
+  PointType,
 } from '@prisma/client';
 import { describe, expect, it } from 'vitest';
 
@@ -68,6 +82,13 @@ describe('enums Prisma x shared', () => {
     ['VoteChoice', VoteChoice, VOTE_CHOICES],
     ['ClaimKind', ClaimKind, CLAIM_KINDS],
     ['ClaimStatus', ClaimStatus, CLAIM_STATUSES],
+    ['PointType', PointType, POINT_TYPES],
+    ['PointStatus', PointStatus, POINT_STATUSES],
+    ['Amenity', Amenity, AMENITIES],
+    ['HostBenefitKind', HostBenefitKind, HOST_BENEFIT_KINDS],
+    ['PointRatingDirection', PointRatingDirection, POINT_RATING_DIRECTIONS],
+    ['PointReportCategory', PointReportCategory, POINT_REPORT_CATEGORIES],
+    ['PointReportStatus', PointReportStatus, POINT_REPORT_STATUSES],
   ])('%s', (_name, prismaEnum, shared) => {
     expect(Object.keys(prismaEnum).sort()).toEqual([...shared].sort());
   });
