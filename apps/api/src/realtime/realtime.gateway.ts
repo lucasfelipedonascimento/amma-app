@@ -1,4 +1,3 @@
-import { Logger } from '@nestjs/common';
 import {
   ConnectedSocket,
   MessageBody,
@@ -7,11 +6,10 @@ import {
   SubscribeMessage,
   WebSocketGateway,
 } from '@nestjs/websockets';
-import { ACTIVE_DRIVER_STATUSES, isValidPoint } from '@amma/shared';
+import { isValidPoint } from '@amma/shared';
 import type { WebSocket } from 'ws';
 import { AuthGuard, AuthUser } from '../auth/auth.guard';
-import { PrismaService } from '../prisma.service';
-import { PresenceService } from '../presence/presence.service';
+import { DeliveryService } from '../delivery/delivery.service';
 import { RealtimeService } from './realtime.service';
 
 /** Quem conecta tem este tempo para enviar { event: "auth" }; senão a conexão é fechada. */
@@ -36,13 +34,10 @@ const error = (code: string, message: string): Reply => ({
  */
 @WebSocketGateway({ path: '/ws', maxPayload: 4096 })
 export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect {
-  private readonly logger = new Logger('WS');
-
   constructor(
     private readonly auth: AuthGuard,
     private readonly realtime: RealtimeService,
-    private readonly presence: PresenceService,
-    private readonly prisma: PrismaService,
+    private readonly deliveries: DeliveryService,
   ) {}
 
   handleConnection(client: Client) {
@@ -79,28 +74,8 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     if (client.lastPositionAt && now - client.lastPositionAt < WS_MIN_POSITION_INTERVAL_MS) return; // descarta em silêncio
     client.lastPositionAt = now;
     const { lat, lng } = body;
-    const accepted = await this.presence.updatePosition(client.user.id, { lat, lng });
+    const accepted = await this.deliveries.reportDriverPosition(client.user.id, { lat, lng });
     if (!accepted) return error('OFFLINE', 'fique online antes de enviar posição');
-    await this.forwardToClient(client.user.id, lat, lng);
     return { event: 'position.ok' };
-  }
-
-  /** Durante uma entrega em andamento, o cliente acompanha o motorista. */
-  private async forwardToClient(driverId: string, lat: number, lng: number) {
-    try {
-      const active = await this.prisma.delivery.findFirst({
-        where: { workerId: driverId, status: { in: [...ACTIVE_DRIVER_STATUSES] } },
-        select: { id: true, clientId: true },
-      });
-      if (active)
-        this.realtime.sendToUser(active.clientId, 'driver.position', {
-          deliveryId: active.id,
-          lat,
-          lng,
-          at: new Date().toISOString(),
-        });
-    } catch (e) {
-      this.logger.warn(`Falha ao repassar posição: ${(e as Error).message}`);
-    }
   }
 }

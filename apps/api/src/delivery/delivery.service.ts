@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import {
+  ACTIVE_DRIVER_STATUSES,
   CANCEL_RULES,
   buildRideSettlement,
   calculateFare,
@@ -17,6 +18,7 @@ import {
   canCancel,
   haversineMeters,
   type AssociationRate,
+  type GeoPoint,
   type CancelReason,
   type DeliveryStatus,
 } from '@amma/shared';
@@ -25,6 +27,7 @@ import { AuthUser } from '../auth/auth.guard';
 import { DispatchService } from '../dispatch/dispatch.service';
 import { LedgerService } from '../ledger/ledger.service';
 import { PositionStore } from '../presence/position-store';
+import { PresenceService } from '../presence/presence.service';
 import { PrismaService } from '../prisma.service';
 import { PricingService } from '../pricing/pricing.service';
 import { RealtimeService } from '../realtime/realtime.service';
@@ -35,6 +38,8 @@ import { deliveryView, type Viewer } from './views';
 
 /** Entregas muito curtas são provavelmente erro de digitação do endereço. */
 const MIN_PICKUP_DROPOFF_METERS = 20;
+/** Posições do mesmo motorista mais frequentes que isto são descartadas. */
+const MIN_POSITION_INTERVAL_MS = 1000;
 
 /** Passos do motorista: estado de destino → estado anterior exigido. */
 const DRIVER_STEPS = {
@@ -48,6 +53,7 @@ export type DriverStep = keyof typeof DRIVER_STEPS;
 @Injectable()
 export class DeliveryService {
   private readonly logger = new Logger('Delivery');
+  private readonly lastPosition = new Map<string, number>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -56,6 +62,7 @@ export class DeliveryService {
     private readonly dispatch: DispatchService,
     private readonly realtime: RealtimeService,
     private readonly positions: PositionStore,
+    private readonly presence: PresenceService,
     @Inject(ROUTE_PROVIDER) private readonly routes: RouteProvider,
   ) {}
 
@@ -299,6 +306,43 @@ export class DeliveryService {
         },
       })
       .then((d) => (d ? deliveryView(d, 'MOTORISTA') : null));
+  }
+
+  /**
+   * Posição do motorista (WebSocket ou REST): grava na presença e, com entrega em andamento,
+   * repassa ao cliente. Devolve false se o motorista não está online.
+   */
+  async reportDriverPosition(driverId: string, p: GeoPoint): Promise<boolean> {
+    const last = this.lastPosition.get(driverId);
+    const now = Date.now();
+    // Mais de 1 por segundo é app com defeito: descarta sem tratar como erro.
+    if (last && now - last < MIN_POSITION_INTERVAL_MS) return true;
+    this.lastPosition.set(driverId, now);
+    const accepted = await this.presence.updatePosition(driverId, p);
+    if (!accepted) {
+      this.lastPosition.delete(driverId);
+      return false;
+    }
+    await this.relayToClient(driverId, p);
+    return true;
+  }
+
+  private async relayToClient(driverId: string, p: GeoPoint) {
+    try {
+      const active = await this.prisma.delivery.findFirst({
+        where: { workerId: driverId, status: { in: [...ACTIVE_DRIVER_STATUSES] } },
+        select: { id: true, clientId: true },
+      });
+      if (active)
+        this.realtime.sendToUser(active.clientId, 'driver.position', {
+          deliveryId: active.id,
+          lat: p.lat,
+          lng: p.lng,
+          at: new Date().toISOString(),
+        });
+    } catch (e) {
+      this.logger.warn(`Falha ao repassar posição: ${(e as Error).message}`);
+    }
   }
 
   private notify(

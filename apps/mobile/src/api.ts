@@ -4,6 +4,9 @@ import * as SecureStore from 'expo-secure-store';
 // Emulador Android: http://10.0.2.2:3000. Celular físico: IP do computador na rede (ex.: http://192.168.0.10:3000).
 export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 
+/** Endereço do WebSocket de tempo real (mesmo servidor da API). */
+export const WS_URL = `${API_URL.replace(/^http/, 'ws')}/ws`;
+
 export interface Tokens {
   accessToken: string;
   refreshToken: string;
@@ -22,6 +25,8 @@ const KEY = 'amma.tokens';
 let tokens: Tokens | null = null;
 let refreshing: Promise<boolean> | null = null;
 let onSessionLost: () => void = () => {};
+
+export const getAccessToken = () => tokens?.accessToken ?? null;
 
 export const getRefreshToken = () => tokens?.refreshToken ?? null;
 

@@ -10,6 +10,7 @@ import {
 import { type Delivery } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
 import { PresenceService } from '../presence/presence.service';
+import { PushService } from '../push/push.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { ROUTE_PROVIDER, type RouteProvider } from '../routing/route-provider';
 import { cancelDelivery, moveStatus, recordEvent } from '../delivery/transitions';
@@ -50,6 +51,7 @@ export class DispatchService {
     private readonly settings: DispatchSettingsService,
     private readonly presence: PresenceService,
     private readonly realtime: RealtimeService,
+    private readonly push: PushService,
     @Inject(ROUTE_PROVIDER) private readonly routes: RouteProvider,
   ) {}
 
@@ -120,11 +122,15 @@ export class DispatchService {
       const offer = await this.createOffer(delivery, chosen, eta, choice, rows.length, config);
       if (offer) {
         const rate = await this.associationRateOf(chosen.driverId);
-        this.realtime.sendToUser(
-          chosen.driverId,
-          'offer.created',
-          offerView(offer, delivery, rate),
-        );
+        const view = offerView(offer, delivery, rate);
+        this.realtime.sendToUser(chosen.driverId, 'offer.created', view);
+        // Reforço para o app fechado/em segundo plano; não espera nem derruba o despacho.
+        void this.push.notifyOffer(chosen.driverId, {
+          id: offer.id,
+          expiresAt: offer.expiresAt,
+          estimatedNetCents: view.estimatedNetCents,
+          deliveryDistanceMeters: view.deliveryDistanceMeters,
+        });
         this.realtime.sendToUser(delivery.clientId, 'delivery.updated', {
           id: delivery.id,
           status: 'OFERECIDO',

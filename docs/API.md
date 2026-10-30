@@ -1,4 +1,4 @@
-# API — pedidos de entrega (Etapa 4)
+# API — pedidos de entrega (Etapa 4) e app do motorista (Etapa 5)
 
 Base: `http://localhost:3000` (`API_PORT`). JSON em UTF-8. Dinheiro em **centavos**, distâncias em **metros**, tempos em **segundos**, datas em **ISO 8601 UTC**. Autenticação: `Authorization: Bearer <accessToken>` (login por OTP em `/auth/otp/*`, ver `docs/PROGRESSO.md`).
 
@@ -261,3 +261,99 @@ CRÉDITO WORKER_QUOTAS:<id>          22     (omitido se a taxa de associação �
 ## 10. Variáveis de ambiente novas
 
 `REDIS_URL`, `ROUTE_PROVIDER`, `MAPBOX_ACCESS_TOKEN`, `DISPATCH_TICK_MS` (ver `.env.example`).
+
+## 11. App do motorista (Etapa 5) — rotas de `MOTORISTA`
+
+### `GET /driver/earnings` → 200
+
+Tudo calculado sobre entregas `ENTREGUE`. O "dia" é o de **João Pessoa (UTC−3)**, não o UTC.
+
+```json
+{
+  "associationRate": 2,
+  "today": {
+    "deliveries": 2,
+    "grossCents": 2200,
+    "platformFeeCents": 220,
+    "associationFeeCents": 44,
+    "netCents": 1936,
+    "competitorFeeCents": 550,
+    "competitorNetCents": 1650,
+    "extraCents": 286
+  },
+  "week": {
+    "days": [
+      {
+        "date": "2026-10-23",
+        "deliveries": 0,
+        "grossCents": 0,
+        "platformFeeCents": 0,
+        "associationFeeCents": 0,
+        "netCents": 0
+      },
+      "… 7 dias, o mais antigo primeiro"
+    ],
+    "deliveries": 2,
+    "grossCents": 2200,
+    "netCents": 1936,
+    "competitorNetCents": 1650,
+    "extraCents": 286
+  },
+  "history": [
+    {
+      "id": "…",
+      "deliveredAt": "…",
+      "pickupAddress": "…",
+      "dropoffAddress": "…",
+      "fareCents": 1100,
+      "platformFeeCents": 110,
+      "associationFeeCents": 22,
+      "workerNetCents": 968,
+      "associationRate": 2
+    }
+  ]
+}
+```
+
+`competitor*` é o comparativo com um app que cobra **25%** (taxa do concorrente arredondada para cima; `extraCents` nunca é negativo). `history`: as 30 últimas.
+
+### `GET /driver/deliveries/:id/route?lat=&lng=` → 200
+
+Rota da posição informada (GPS do aparelho) até o próximo ponto: **coleta** em `ACEITO`/`A_CAMINHO_COLETA`, **entrega** em `COLETADO`/`A_CAMINHO_ENTREGA`.
+
+```json
+{
+  "target": "COLETA",
+  "destination": { "lat": -7.115, "lng": -34.861, "address": "…" },
+  "distanceMeters": 1500,
+  "durationSeconds": 300,
+  "path": [{ "lat": -7.12, "lng": -34.86 }, "…"]
+}
+```
+
+`404` se o pedido não é seu, `409` se não está em andamento, `503` se o provedor de rotas falhar. No modo simulado o `path` é a reta entre os dois pontos; no Mapbox é a geometria real (`overview=full`).
+
+### `POST /driver/position` `{ lat, lng }` → 200 `{ "accepted": boolean }`
+
+Posição por REST, usada pela localização em segundo plano quando o WebSocket não está aberto. Mesmas regras do WebSocket (só online; no máximo 1/s por motorista; PostGIS 1×/5 s). `accepted: false` = o servidor não considera o motorista online → o app **para** de enviar.
+
+### Consentimento de localização (LGPD)
+
+| Rota                              | Descrição                                                                                         |
+| --------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `GET /driver/location-consent`    | `{ version, granted, grantedAt }` para a versão vigente (`LOCATION_CONSENT_VERSION` no `shared`). |
+| `POST /driver/location-consent`   | `{ version }`. `400` se a versão for velha. Idempotente (não duplica o registro).                 |
+| `DELETE /driver/location-consent` | → 204. Revoga: apaga os registros desse consentimento.                                            |
+
+O servidor **não** impede `presence/online` sem consentimento (o contrato da Etapa 4 segue igual); quem exige é o app. Ver pendências.
+
+### Push
+
+| Rota                        | Descrição                                                                                                                        |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `PUT /driver/push-token`    | `{ token: "ExponentPushToken[…]", platform: "android" \| "ios" }` → 204. O token muda de dono se outra pessoa entra no aparelho. |
+| `DELETE /driver/push-token` | Mesmo corpo → 204. Só apaga se o token for seu.                                                                                  |
+
+A cada **nova oferta** o motorista recebe um push (título "Novo pedido de entrega", corpo "Você recebe R$ 9,68 · corrida de 2,9 km", `data: { type: "offer", offerId }`, prioridade alta, canal Android `offers`, `ttl` = tempo que falta para a oferta vencer). **Sem endereços**: a tela bloqueada é pública. Enviado em paralelo ao WebSocket; falha no push nunca atrapalha o despacho. Tokens que o Expo diz não existirem mais (`DeviceNotRegistered`) são apagados.
+
+Variáveis: `PUSH_MODE` (`simulated` padrão — só registra no log, **recusado em produção** — ou `expo`) e `EXPO_ACCESS_TOKEN` (opcional).

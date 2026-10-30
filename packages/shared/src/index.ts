@@ -11,3 +11,5 @@ export * from './roles';
 export * from './geo';
 export * from './delivery-state';
 export * from './dispatch';
+export * from './earnings';
+export * from './location-consent';

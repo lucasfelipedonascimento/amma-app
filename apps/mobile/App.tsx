@@ -4,6 +4,7 @@ import { ActivityIndicator, View } from 'react-native';
 import { api } from './src/api';
 import { ApprovalScreen, DriverStatus } from './src/screens/ApprovalScreen';
 import { DocumentsScreen } from './src/screens/DocumentsScreen';
+import { DriverApp } from './src/driver/DriverApp';
 import { DriverProfileScreen } from './src/screens/DriverProfileScreen';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { PhoneScreen } from './src/screens/PhoneScreen';
@@ -79,6 +80,7 @@ function Root() {
         />
       );
     }
+    return <DriverApp />;
   }
   return <HomeScreen />;
 }

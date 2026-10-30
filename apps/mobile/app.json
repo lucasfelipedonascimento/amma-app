@@ -6,11 +6,34 @@
     "orientation": "portrait",
     "backgroundColor": "#1e1a18",
     "ios": {
-      "bundleIdentifier": "br.org.amma.app"
+      "bundleIdentifier": "br.org.amma.app",
+      "infoPlist": {
+        "UIBackgroundModes": ["location"],
+        "NSLocationWhenInUseUsageDescription": "A AMMA usa sua localização enquanto você está online para enviar pedidos perto de você.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "A AMMA usa sua localização, mesmo com o app fechado, enquanto você está online, para continuar recebendo pedidos."
+      }
     },
     "android": {
       "package": "br.org.amma.app"
     },
-    "plugins": ["expo-status-bar", "expo-secure-store"]
+    "plugins": [
+      "expo-status-bar",
+      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "A AMMA usa sua localização, mesmo com o app fechado, enquanto você está online, para continuar recebendo pedidos.",
+          "locationWhenInUsePermission": "A AMMA usa sua localização enquanto você está online para enviar pedidos perto de você.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#c9221a"
+        }
+      ]
+    ]
   }
 }

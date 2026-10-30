@@ -29,6 +29,21 @@ export class LatLngDto {
   @IsNumber() @Min(-180) @Max(180) lng!: number;
 }
 
+export class RouteQuery {
+  @Type(() => Number) @IsNumber() @Min(-90) @Max(90) lat!: number;
+  @Type(() => Number) @IsNumber() @Min(-180) @Max(180) lng!: number;
+}
+
+export class PushTokenDto {
+  @Matches(/^Expo(nent)?PushToken\[[\w-]{10,}\]$/, { message: 'token de push inválido' })
+  token!: string;
+  @IsIn(['android', 'ios']) platform!: 'android' | 'ios';
+}
+
+export class ConsentDto {
+  @IsString() version!: string;
+}
+
 export class PlaceDto extends LatLngDto {
   @IsString() @MinLength(3) @MaxLength(200) address!: string;
 }

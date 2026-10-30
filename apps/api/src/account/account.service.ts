@@ -74,6 +74,7 @@ export class AccountService {
         where: { driverId: userId, status: 'PENDENTE' },
         data: { status: 'CANCELADA', respondedAt: new Date() },
       }),
+      this.prisma.pushToken.deleteMany({ where: { userId } }),
       this.prisma.driverPresence.deleteMany({ where: { userId } }),
       this.prisma.document.deleteMany({ where: { userId } }),
       this.prisma.vehicle.deleteMany({ where: { userId } }),

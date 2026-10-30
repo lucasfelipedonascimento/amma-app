@@ -36,6 +36,8 @@ enum ApprovalStatus {
 
 enum ConsentType {
   POLITICA_PRIVACIDADE
+  // Motorista autoriza usar a localização (inclusive com o app em segundo plano) enquanto está online.
+  LOCALIZACAO_SEGUNDO_PLANO
 }
 
 enum RideType {
@@ -128,6 +130,7 @@ model User {
   deliveriesAsClient Delivery[]      @relation("DeliveryClient")
   deliveriesAsWorker Delivery[]      @relation("DeliveryWorker")
   deliveryOffers     DeliveryOffer[]
+  pushTokens         PushToken[]
 }
 
 // Código de uso único enviado por SMS. Só o hash é guardado.
@@ -431,4 +434,18 @@ model DispatchSettings {
   maxPositionAgeSeconds Int
   updatedById           String?
   updatedAt             DateTime @updatedAt @db.Timestamptz(3)
+}
+
+// Endereço de notificação push (Expo) de um aparelho. Um token pertence a um só usuário por vez:
+// se outra pessoa entra no mesmo aparelho, o token muda de dono. Apagado no logout e na exclusão da conta.
+model PushToken {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  platform  String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }

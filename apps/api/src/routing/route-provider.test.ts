@@ -19,6 +19,12 @@ describe('SimulatedRouteProvider', () => {
     expect(r1.durationSeconds).toBe(Math.ceil(r1.distanceMeters / (25_000 / 3600)));
     expect(await p.route(A, A)).toEqual({ distanceMeters: 0, durationSeconds: 0 });
   });
+
+  it('devolve o trajeto (reta) só quando pedido', async () => {
+    const p = new SimulatedRouteProvider();
+    expect((await p.route(A, B)).path).toBeUndefined();
+    expect((await p.route(A, B, { withPath: true })).path).toEqual([A, B]);
+  });
 });
 
 describe('MapboxRouteProvider', () => {
@@ -32,6 +38,36 @@ describe('MapboxRouteProvider', () => {
     const url = String((fetchFn.mock.calls[0] as unknown[])[0]);
     expect(url).toContain('/driving/-34.86,-7.115;-34.86,-7.105');
     expect(url).toContain('access_token=tok');
+  });
+
+  it('com withPath pede a geometria e converte [lng,lat] em pontos', async () => {
+    const fetchFn = ok({
+      code: 'Ok',
+      routes: [
+        {
+          distance: 100,
+          duration: 20,
+          geometry: {
+            coordinates: [
+              [-34.86, -7.115],
+              [-34.86, -7.105],
+            ],
+          },
+        },
+      ],
+    });
+    const r = await new MapboxRouteProvider('tok', fetchFn).route(A, B, { withPath: true });
+    expect(r.path).toEqual([A, B]);
+    expect(String((fetchFn.mock.calls[0] as unknown[])[0])).toContain(
+      'overview=full&geometries=geojson',
+    );
+  });
+
+  it('sem withPath não pede geometria', async () => {
+    const fetchFn = ok({ code: 'Ok', routes: [{ distance: 1, duration: 1 }] });
+    const r = await new MapboxRouteProvider('tok', fetchFn).route(A, B);
+    expect(r.path).toBeUndefined();
+    expect(String((fetchFn.mock.calls[0] as unknown[])[0])).toContain('overview=false');
   });
 
   it('erro HTTP, rede e resposta sem rota viram RouteUnavailableError sem vazar o token', async () => {

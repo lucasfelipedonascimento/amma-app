@@ -27,4 +27,12 @@ export default tseslint.config(
     files: ['apps/api/test/**/*.ts'],
     rules: { '@typescript-eslint/no-explicit-any': 'off' },
   },
+  {
+    // Mocks do Jest precisam de require() e de tipos soltos (o módulo nativo real nem existe no teste).
+    files: ['apps/mobile/jest.setup.ts'],
+    rules: {
+      '@typescript-eslint/no-require-imports': 'off',
+      '@typescript-eslint/no-explicit-any': 'off',
+    },
+  },
 );

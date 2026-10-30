@@ -5,11 +5,17 @@ import { haversineMeters, type GeoPoint } from '@amma/shared';
 export interface RouteResult {
   distanceMeters: number;
   durationSeconds: number;
+  /** Pontos do trajeto, só quando pedidos (`withPath`). Para desenhar no mapa do app. */
+  path?: GeoPoint[];
+}
+
+export interface RouteOptions {
+  withPath?: boolean;
 }
 
 /** Rota entre dois pontos. Trocar de provedor = implementar esta interface. */
 export interface RouteProvider {
-  route(origin: GeoPoint, destination: GeoPoint): Promise<RouteResult>;
+  route(origin: GeoPoint, destination: GeoPoint, opts?: RouteOptions): Promise<RouteResult>;
 }
 
 export const ROUTE_PROVIDER = Symbol('ROUTE_PROVIDER');
@@ -23,13 +29,15 @@ export class SimulatedRouteProvider implements RouteProvider {
   /** 25 km/h de média urbana de moto. */
   static readonly SPEED_MPS = 25_000 / 3600;
 
-  async route(origin: GeoPoint, destination: GeoPoint): Promise<RouteResult> {
+  async route(origin: GeoPoint, destination: GeoPoint, opts?: RouteOptions): Promise<RouteResult> {
     const distanceMeters = Math.round(
       haversineMeters(origin, destination) * SimulatedRouteProvider.DETOUR_FACTOR,
     );
     return {
       distanceMeters,
       durationSeconds: Math.ceil(distanceMeters / SimulatedRouteProvider.SPEED_MPS),
+      // Sem mapa de ruas: o "trajeto" simulado é a reta entre os dois pontos.
+      ...(opts?.withPath ? { path: [origin, destination] } : {}),
     };
   }
 }
@@ -45,10 +53,18 @@ export class MapboxRouteProvider implements RouteProvider {
     private readonly timeoutMs = 5000,
   ) {}
 
-  async route(origin: GeoPoint, destination: GeoPoint): Promise<RouteResult> {
+  async route(origin: GeoPoint, destination: GeoPoint, opts?: RouteOptions): Promise<RouteResult> {
+    const overview = opts?.withPath ? 'overview=full&geometries=geojson' : 'overview=false';
     const coords = `${origin.lng},${origin.lat};${destination.lng},${destination.lat}`;
-    const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${coords}?overview=false&access_token=${encodeURIComponent(this.token)}`;
-    let body: { code?: string; routes?: { distance?: number; duration?: number }[] };
+    const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${coords}?${overview}&access_token=${encodeURIComponent(this.token)}`;
+    let body: {
+      code?: string;
+      routes?: {
+        distance?: number;
+        duration?: number;
+        geometry?: { coordinates?: [number, number][] };
+      }[];
+    };
     try {
       const res = await this.fetchFn(url, { signal: AbortSignal.timeout(this.timeoutMs) });
       // Nunca incluir a URL na mensagem: ela carrega o token.
@@ -61,7 +77,14 @@ export class MapboxRouteProvider implements RouteProvider {
     const r = body.routes?.[0];
     if (body.code !== 'Ok' || r?.distance === undefined || r.duration === undefined)
       throw new RouteUnavailableError(`Mapbox sem rota (${body.code ?? 'resposta inválida'})`);
-    return { distanceMeters: Math.ceil(r.distance), durationSeconds: Math.ceil(r.duration) };
+    const result: RouteResult = {
+      distanceMeters: Math.ceil(r.distance),
+      durationSeconds: Math.ceil(r.duration),
+    };
+    // GeoJSON do Mapbox vem como [lng, lat].
+    if (opts?.withPath && r.geometry?.coordinates)
+      result.path = r.geometry.coordinates.map(([lng, lat]) => ({ lat, lng }));
+    return result;
   }
 }
 

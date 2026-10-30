@@ -1,12 +1,15 @@
 import {
   Body,
+  BadRequestException,
   Controller,
+  Delete,
   Get,
   HttpCode,
   Param,
   ParseUUIDPipe,
   Post,
   Put,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -16,7 +19,17 @@ import { DispatchService } from '../dispatch/dispatch.service';
 import { DriverService } from '../driver/driver.service';
 import { LedgerService } from '../ledger/ledger.service';
 import { PresenceService } from '../presence/presence.service';
-import { AssociationRateDto, DeclineDto, LatLngDto } from './dto';
+import { PushService } from '../push/push.service';
+import { LOCATION_CONSENT_VERSION } from '@amma/shared';
+import {
+  AssociationRateDto,
+  ConsentDto,
+  DeclineDto,
+  LatLngDto,
+  PushTokenDto,
+  RouteQuery,
+} from './dto';
+import { DriverAppService } from './driver-app.service';
 import { DeliveryService, type DriverStep } from './delivery.service';
 
 type Req_ = { user: AuthUser };
@@ -32,6 +45,8 @@ export class DriverOpsController {
     private readonly deliveries: DeliveryService,
     private readonly ledger: LedgerService,
     private readonly driver: DriverService,
+    private readonly app: DriverAppService,
+    private readonly push: PushService,
   ) {}
 
   @Get('presence')
@@ -115,6 +130,56 @@ export class DriverOpsController {
   @Put('association-rate')
   associationRate(@Req() req: Req_, @Body() dto: AssociationRateDto) {
     return this.driver.setAssociationRate(req.user.id, dto.rate);
+  }
+
+  // ---------------------------------------------------------------- app do motorista
+
+  @Get('earnings')
+  earnings(@Req() req: Req_) {
+    return this.app.earnings(req.user.id);
+  }
+
+  @Get('deliveries/:id/route')
+  route(@Req() req: Req_, @Param('id', ParseUUIDPipe) id: string, @Query() q: RouteQuery) {
+    return this.app.route(req.user.id, id, q);
+  }
+
+  /** Posição por REST: usada pela localização em segundo plano, quando o WebSocket não está aberto. */
+  @Post('position')
+  @HttpCode(200)
+  async position(@Req() req: Req_, @Body() dto: LatLngDto) {
+    return { accepted: await this.deliveries.reportDriverPosition(req.user.id, dto) };
+  }
+
+  @Get('location-consent')
+  locationConsent(@Req() req: Req_) {
+    return this.app.locationConsent(req.user.id);
+  }
+
+  @Post('location-consent')
+  @HttpCode(200)
+  grantLocationConsent(@Req() req: Req_, @Body() dto: ConsentDto) {
+    if (dto.version !== LOCATION_CONSENT_VERSION)
+      throw new BadRequestException('Versão do consentimento desatualizada. Atualize o app.');
+    return this.app.grantLocationConsent(req.user.id);
+  }
+
+  @Delete('location-consent')
+  @HttpCode(204)
+  revokeLocationConsent(@Req() req: Req_) {
+    return this.app.revokeLocationConsent(req.user.id);
+  }
+
+  @Put('push-token')
+  @HttpCode(204)
+  registerPushToken(@Req() req: Req_, @Body() dto: PushTokenDto) {
+    return this.push.registerToken(req.user.id, dto.token, dto.platform);
+  }
+
+  @Delete('push-token')
+  @HttpCode(204)
+  removePushToken(@Req() req: Req_, @Body() dto: PushTokenDto) {
+    return this.push.removeToken(req.user.id, dto.token);
   }
 
   private step(req: Req_, id: string, to: DriverStep) {

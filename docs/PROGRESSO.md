@@ -157,3 +157,41 @@ Variáveis novas: `ROUTE_PROVIDER` (`simulated`|`mapbox`), `MAPBOX_ACCESS_TOKEN`
 - Telas do app para tudo isso (nenhuma tela foi criada nesta etapa) e painel admin.
 - Remover `QuotaAccount`/`QuotaEntry` e `Ride.type = DELIVERY`, hoje sem uso.
 - Retenção de endereços e do registro de decisões (LGPD).
+
+## Etapa 5 — App do motorista ✅ (sem teste em celular real)
+
+**Feito** (detalhes em `docs/MOBILE.md` e `docs/API.md` seção 11)
+
+- **Início:** online/offline, ganhos do dia com o comparativo de **25%** (“na AMMA / num app com 25% / a mais no seu bolso”), cartão de oferta com Aceitar/Recusar mostrando **corrida, taxa base (10%), taxa da associação e valor líquido**, contagem regressiva.
+- **Entrega em andamento:** mapa com rota e sua posição ao vivo, 4 etapas, botão do próximo passo, “não consigo seguir” (até a coleta), abrir no app de mapas e **emergência** (confirma e liga 190/192/193).
+- **Ganhos:** semana dia a dia, histórico, simulador (valor × 0/2/4%). Aba **Conta** com revogação do consentimento, sair e excluir conta.
+- **Localização em segundo plano** (permissão “o tempo todo”, serviço em primeiro plano no Android) com **tela de consentimento** antes do pedido do sistema; consentimento versionado e gravado na API (LGPD). Sem a permissão “o tempo todo” o app avisa e funciona só com a tela aberta.
+- **Push** de nova oferta (Expo): `PushService` na API, token por aparelho, sem endereço na mensagem, tokens mortos limpos.
+- **Estados** de carregamento, erro (com “Tentar de novo”) e sem internet (faixa) em todas as telas; WebSocket com reconexão e consulta a cada 5 s enquanto ele estiver fora.
+- **API nova:** `GET /driver/earnings`, `GET /driver/deliveries/:id/route`, `POST /driver/position`, consentimento de localização, `PUT/DELETE /driver/push-token`; rotas com `path` (trajeto) no `RouteProvider`.
+- **shared:** `earnings.ts` (comparativo 25%, dia no fuso de João Pessoa, semana, simulador, detalhe da oferta) e `location-consent.ts`.
+- **Testes:** shared 109 (+23), api 38 unitários (+10) e **54 de integração** (+13), **mobile 97** (Jest + Testing Library: componentes, hook de rota, provider, WebSocket). Bundle Android conferido com `expo export`; fluxo ponta a ponta feito com a API real.
+
+**Como rodar**
+
+```
+pnpm install && pnpm db:up
+cd apps/api && pnpm prisma:deploy && pnpm db:seed && cd ../..     # migração nova: push_location_consent
+pnpm build && pnpm test && pnpm lint && pnpm typecheck
+pnpm --filter @amma/api test:int
+pnpm --filter @amma/mobile test
+```
+
+Celular real: **`docs/MOBILE.md`** (build de desenvolvimento, chaves, roteiro de teste marcável). Pedido de teste: `node scripts/demo-delivery.mjs <lat> <lng> <url-da-api>`.
+
+**Falta / pendências**
+
+- **Nada foi testado em aparelho físico:** segundo plano com a tela apagada/app encerrado, entrega do push e o mapa real dependem de chaves suas (Google Maps, Firebase/FCM, `EAS_PROJECT_ID`) e de um build de desenvolvimento. Não há `eas.json`.
+- **Emergência só liga para 190/192/193** (e para um número da central, se `EXPO_PUBLIC_AMMA_SUPPORT_PHONE` existir). Avisar a associação/cliente com a localização exige um canal que ainda não existe — definir com a associação.
+- O servidor **não exige** o consentimento de localização para ficar online (só o app exige).
+- Rota: o provedor simulado devolve uma reta; ruas de verdade só com `ROUTE_PROVIDER=mapbox` (não testado com chave real). Sem “rota recalculada” se o motorista desvia menos de 200 m ou antes de 15 s.
+- Fabricantes que matam apps em segundo plano (economia de bateria) podem interromper a posição; precisa de teste em aparelhos reais e orientação ao motorista.
+- Localização usa o tempo real do WebSocket; se ele estiver “meio morto” (sem sinal, mas não fechado) a posição só volta pelo REST depois que o app notar. Sem heartbeat ainda.
+- Sem fonte Outfit, sem ícone/splash, sem acessibilidade revisada em leitor de tela, sem tema escuro.
+- Telas de cliente/comerciante, painel admin, push para o cliente e multa/ressarcimento seguem pendentes (Etapa 4).
+- Ganhos mostram o que está no ledger/pedido; o saque/repasse ao parceiro regulado ainda não existe.
