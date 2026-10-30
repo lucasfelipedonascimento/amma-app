@@ -465,3 +465,13 @@ Foco combinado: deixar tudo pronto para conectar o provedor depois (nenhuma cham
 - Repasse que falha não bloqueia a conclusão; a rotina periódica repete. Migração `20261105120000_payment_split_webhook` (rode `prisma:deploy`).
 - Registro de provedores (`REAL_PROVIDERS`) e `PAYMENT_WEBHOOK_SECRET` obrigatório em produção. Passo a passo: `docs/INTEGRACAO_PAGAMENTO.md`.
 - **Falta:** escolher/contratar o provedor, cadastro das subcontas dos motoristas, SDK de cartão no app, chargeback.
+- **Fora do escopo por decisão (2026-10-30):** cartão de **débito** (hoje o cartão não distingue crédito/débito) e pagamento em **dinheiro**. Análise e pendências em `docs/INTEGRACAO_PAGAMENTO.md`, seção "Formas de pagamento".
+
+## Trocar o simulado pelo real — integração 3: SMS/WhatsApp do código de login (2026-10-30)
+
+Foco combinado: deixar pronto para conectar (nenhum provedor contratado ou chamado).
+
+- `OtpSender` agora usa a interface `OtpChannel` e um registro `REAL_CHANNELS` (`OTP_MODE=<nome>`). Modo sem canal registrado não sobe; simulado segue recusado em produção.
+- Com canal real o código **não** volta na resposta; falha do provedor vira 503 genérico (detalhe só no log, telefone mascarado).
+- Passo a passo em `docs/INTEGRACAO_OTP.md`.
+- **Falta (👤):** escolher SMS ou WhatsApp, contratar, limite de gasto no painel do provedor, remetente/template aprovado.

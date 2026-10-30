@@ -45,3 +45,23 @@ A soma sempre fecha com o valor cobrado (`buildPaymentSplit`, no `shared`); se n
 - **Escolher o provedor** e contratar. Cada um tem um modelo de subcontas diferente: o adaptador precisa mapear `workerId` → conta do motorista (cadastro/KYC do motorista no provedor ainda não existe).
 - Quem emite a nota/recibo fiscal e quem responde pelo dinheiro em trânsito: parecer jurídico (ver `docs/CHECKLIST_LANCAMENTO.md`).
 - Contestação de cartão (chargeback) depois do repasse: hoje não há fluxo.
+
+## Formas de pagamento: decisão de 2026-10-30
+
+Hoje existem só **Pix** e **cartão** (`enum PaymentMethod { PIX, CARTAO }`). Ficou decidido **não mexer nisso por enquanto** (as duas opções abaixo ficam registradas para quando houver decisão de negócio).
+
+### Cartão: crédito x débito
+
+- O código **não distingue**: a tokenização guarda número, validade e CVV, sem campo de tipo. Não há parcelamento.
+- Débito, com provedor real, é configuração da cobrança (ex.: `credit_card` / `debit_card`, o nome varia) e costuma exigir autenticação 3DS; as taxas do provedor são diferentes das do crédito.
+- Para implementar: campo de tipo no modelo e na tela (`CardForm.tsx`), repassado ao adaptador (`PaymentProvider.charge`), e conferir se o provedor escolhido suporta débito.
+
+### Dinheiro (em espécie)
+
+Não é só mais uma opção na lista: muda o fluxo do dinheiro.
+
+- **Repasse:** hoje a cobrança entra inteira na plataforma e o repasse sai depois da entrega. Com dinheiro o motorista recebe na mão; a taxa base e a da associação teriam de ser cobradas dele (saldo devedor no ledger, com bloqueio de novas corridas acima de um limite em aberto).
+- **Calote:** sem pré-autorização, o passageiro pode se recusar a pagar no fim.
+- **Segurança:** o motorista passa a carregar dinheiro (risco de assalto, disputa de troco).
+- **Conciliação:** exige confirmação do recebimento pelo motorista, contestação pelo passageiro e cobertura de auditoria/antifraude.
+- **Decisão pendente (👤):** como a associação quer cobrar a taxa do motorista e qual o limite de saldo devedor.
