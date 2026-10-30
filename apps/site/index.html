@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AMMA — Associação dos Motoboys e Motoristas de Aplicativo</title>
+<meta name="description" content="App de entregas e corridas de João Pessoa-PB feito para valer a pena a quem trabalha: taxa de 10%, associação opcional, cotas, sobras anuais e voto de cada sócio.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --red: #c9221a;
+    --red-dark: #a51b14;
+    --ink: #1e1a18;
+    --ink-soft: #5b534e;
+    --cream: #fbf8f4;
+    --card: #ffffff;
+    --line: #e9e2da;
+    --radius: 18px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: 'Outfit', system-ui, sans-serif;
+    background: var(--cream);
+    color: var(--ink);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: inherit; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+  section { padding: 84px 0; }
+  h1, h2, h3 { line-height: 1.15; letter-spacing: -0.02em; }
+  h2 { font-size: clamp(1.9rem, 4vw, 2.6rem); font-weight: 800; margin-bottom: 14px; }
+  h3 { font-size: 1.2rem; font-weight: 700; margin-bottom: 8px; }
+  .eyebrow {
+    display: inline-block; font-size: .8rem; font-weight: 700; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--red); margin-bottom: 12px;
+  }
+  .lead { font-size: 1.15rem; color: var(--ink-soft); max-width: 680px; }
+  .grid { display: grid; gap: 20px; margin-top: 40px; }
+  .g2 { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+  .g3 { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 26px;
+  }
+  .card p { color: var(--ink-soft); }
+
+  /* topo */
+  header.nav {
+    position: sticky; top: 0; z-index: 10; background: rgba(251,248,244,.92);
+    backdrop-filter: blur(8px); border-bottom: 1px solid var(--line);
+  }
+  .nav .wrap { display: flex; align-items: center; justify-content: space-between; height: 64px; }
+  .logo { font-weight: 800; font-size: 1.5rem; letter-spacing: .02em; text-decoration: none; color: var(--red); }
+  .nav nav { display: flex; gap: 22px; font-size: .95rem; font-weight: 500; }
+  .nav nav a { text-decoration: none; color: var(--ink-soft); }
+  .nav nav a:hover { color: var(--red); }
+  @media (max-width: 760px) { .nav nav { display: none; } }
+
+  /* hero */
+  .hero { background: var(--ink); color: var(--cream); padding: 96px 0 88px; position: relative; overflow: hidden; }
+  .hero::after {
+    content: ""; position: absolute; right: -160px; top: -160px; width: 520px; height: 520px;
+    border-radius: 50%; background: var(--red); opacity: .9;
+  }
+  .hero .wrap { position: relative; z-index: 1; }
+  .hero h1 { font-size: clamp(2.4rem, 6.5vw, 4.2rem); font-weight: 800; max-width: 760px; }
+  .hero h1 em { font-style: normal; color: #ff6a5f; }
+  .hero p { font-size: 1.2rem; max-width: 600px; margin: 22px 0 34px; color: #d9d0c8; }
+  .btn {
+    display: inline-block; padding: 14px 26px; border-radius: 999px; font-weight: 700;
+    text-decoration: none; background: var(--red); color: #fff; transition: background .15s;
+  }
+  .btn:hover { background: var(--red-dark); }
+  .btn.ghost { background: transparent; border: 2px solid #6d625a; margin-left: 10px; }
+  .btn.ghost:hover { background: #2c2724; }
+  .stats { display: flex; flex-wrap: wrap; gap: 36px; margin-top: 56px; }
+  .stat b { display: block; font-size: 2.3rem; font-weight: 800; color: #fff; }
+  .stat span { font-size: .9rem; color: #bdb2a9; }
+
+  /* sobre */
+  .about-list { list-style: none; margin-top: 28px; display: grid; gap: 14px; }
+  .about-list li { padding-left: 34px; position: relative; color: var(--ink-soft); }
+  .about-list li::before {
+    content: "✓"; position: absolute; left: 0; top: 1px; width: 24px; height: 24px; border-radius: 50%;
+    background: var(--red); color: #fff; font-size: .8rem; font-weight: 700;
+    display: grid; place-items: center;
+  }
+  .about-list b { color: var(--ink); }
+
+  /* como funciona */
+  .alt { background: #f3ede6; }
+  .steps { counter-reset: s; }
+  .step { position: relative; padding-top: 70px; }
+  .step::before {
+    counter-increment: s; content: counter(s); position: absolute; top: 22px; left: 26px;
+    width: 38px; height: 38px; border-radius: 50%; background: var(--red); color: #fff;
+    font-weight: 800; display: grid; place-items: center;
+  }
+  .roles .tag {
+    display: inline-block; font-size: .75rem; font-weight: 700; padding: 3px 10px; border-radius: 999px;
+    background: #f6dcda; color: var(--red-dark); margin-bottom: 10px;
+  }
+
+  /* taxas */
+  .fees { display: grid; gap: 40px; grid-template-columns: 1fr 1fr; align-items: start; margin-top: 40px; }
+  @media (max-width: 860px) { .fees { grid-template-columns: 1fr; } }
+  .rate-row { display: flex; gap: 10px; margin: 14px 0 22px; }
+  .rate-row button {
+    flex: 1; padding: 12px 0; border-radius: 12px; border: 2px solid var(--line); background: #fff;
+    font: inherit; font-weight: 700; cursor: pointer; color: var(--ink);
+  }
+  .rate-row button.on { border-color: var(--red); background: #fdeceb; color: var(--red-dark); }
+  label.field { font-weight: 600; font-size: .95rem; }
+  input[type=number] {
+    width: 100%; margin-top: 6px; padding: 12px 14px; font: inherit; font-size: 1.1rem;
+    border: 2px solid var(--line); border-radius: 12px; background: #fff;
+  }
+  .bar { display: flex; height: 22px; border-radius: 999px; overflow: hidden; margin: 22px 0 14px; background: var(--line); }
+  .bar i { display: block; height: 100%; transition: width .25s; }
+  .b-net { background: var(--ink); } .b-base { background: var(--red); } .b-assoc { background: #f0a39e; }
+  .res { list-style: none; }
+  .res li { display: flex; justify-content: space-between; padding: 9px 0; border-bottom: 1px dashed var(--line); }
+  .res li:last-child { border: 0; font-weight: 800; font-size: 1.15rem; }
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; }
+  .note { font-size: .88rem; color: var(--ink-soft); margin-top: 16px; }
+
+  /* associação */
+  .levels { display: grid; gap: 14px; grid-template-columns: repeat(3, 1fr); margin-top: 28px; }
+  @media (max-width: 600px) { .levels { grid-template-columns: 1fr; } }
+  .lvl { text-align: center; padding: 22px 12px; border-radius: var(--radius); border: 1px solid var(--line); background: #fff; }
+  .lvl b { display: block; font-size: 1.3rem; }
+  .lvl span { color: var(--ink-soft); font-size: .92rem; }
+  .lvl.bronze { border-top: 6px solid #b87333; }
+  .lvl.prata { border-top: 6px solid #9aa0a6; }
+  .lvl.ouro { border-top: 6px solid #d4a017; }
+  .icon { font-size: 1.8rem; margin-bottom: 10px; }
+
+  /* segurança */
+  .dark { background: var(--ink); color: var(--cream); }
+  .dark .lead, .dark .card p { color: #cfc5bc; }
+  .dark .card { background: #2a2522; border-color: #3a3430; }
+
+  .legal { background: #fdf3d9; border: 1px solid #ecd28a; border-radius: var(--radius); padding: 24px 28px; margin-top: 36px; }
+  .legal h3 { margin-bottom: 6px; }
+  .legal p { color: #5b4a12; }
+
+  footer { background: var(--ink); color: #bdb2a9; padding: 44px 0; text-align: center; font-size: .92rem; }
+  footer b { color: #fff; font-size: 1.3rem; display: block; margin-bottom: 6px; }
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="logo" href="#topo">AMMA</a>
+    <nav>
+      <a href="#sobre">Sobre</a>
+      <a href="#como">Como funciona</a>
+      <a href="#corridas">Corridas</a>
+      <a href="#taxas">Taxas</a>
+      <a href="#associacao">Associação</a>
+      <a href="#seguranca">Segurança</a>
+    </nav>
+  </div>
+</header>
+
+<main id="topo">
+  <div class="hero">
+    <div class="wrap">
+      <span class="eyebrow" style="color:#ff9a92">João Pessoa · PB</span>
+      <h1>O app de entregas e corridas que <em>vale a pena</em> a quem trabalha.</h1>
+      <p>A AMMA é a Associação dos Motoboys e Motoristas de Aplicativo. Taxa clara, ganhos transparentes e o trabalhador como dono: quem roda, participa das decisões e divide as sobras.</p>
+      <a class="btn" href="#como">Ver como funciona</a>
+      <a class="btn ghost" href="#taxas">Simular uma corrida</a>
+      <div class="stats">
+        <div class="stat"><b>10%</b><span>taxa base por corrida</span></div>
+        <div class="stat"><b>0–4%</b><span>associação, opcional</span></div>
+        <div class="stat"><b>1 sócio</b><span>= 1 voto</span></div>
+        <div class="stat"><b>R$ 5</b><span>valor de cada cota</span></div>
+      </div>
+    </div>
+  </div>
+
+  <section id="sobre">
+    <div class="wrap">
+      <span class="eyebrow">Sobre a AMMA</span>
+      <h2>Um app feito pela categoria, para a categoria.</h2>
+      <p class="lead">Os grandes aplicativos ficam com uma fatia pesada e decidem tudo sozinhos. A AMMA inverte essa lógica: a taxa é baixa e conhecida, o trabalhador pode virar sócio e a associação é quem define as regras, em assembleia.</p>
+      <ul class="about-list">
+        <li><b>Entregas e corridas de passageiro</b> no mesmo aplicativo: moto, carro e entregas de comerciantes.</li>
+        <li><b>Ganho transparente:</b> o motorista vê quanto a corrida pagou, quanto foi de taxa e quanto ficou com ele.</li>
+        <li><b>Piso de preço</b> por quilômetro e por minuto, para nenhuma corrida sair abaixo do que compensa.</li>
+        <li><b>Associação de verdade:</b> cotas, níveis, sobras anuais, seguro mútuo, compra coletiva de veículos e assembleia.</li>
+        <li><b>Quatro perfis:</b> passageiro/cliente, entregador/motorista, comerciante e administrador da associação.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section id="como" class="alt">
+    <div class="wrap">
+      <span class="eyebrow">Como funciona</span>
+      <h2>Do pedido ao pagamento, em quatro passos.</h2>
+      <div class="grid g3 steps" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">
+        <div class="card step"><h3>Pedir</h3><p>O cliente escolhe origem, destino e o tipo (entrega, carro ou moto) e vê o preço antes de confirmar. O valor mostrado é o valor cobrado.</p></div>
+        <div class="card step"><h3>Aceitar</h3><p>A oferta chega ao motorista mais próximo habilitado para aquele tipo de veículo. Ele vê o trajeto e o ganho antes de aceitar.</p></div>
+        <div class="card step"><h3>Rodar</h3><p>O motorista segue no mapa, com acompanhamento em tempo real para o cliente. Na corrida de passageiro, o embarque só acontece com o PIN.</p></div>
+        <div class="card step"><h3>Receber</h3><p>Ao concluir, a corrida é dividida e registrada: taxa base, associação (se o motorista escolheu) e o líquido, com recibo para os dois lados.</p></div>
+      </div>
+
+      <h3 style="margin-top:56px">Quem usa a AMMA</h3>
+      <div class="grid g2 roles" style="margin-top:16px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">
+        <div class="card"><span class="tag">Passageiro / Cliente</span><p>Pede corridas e entregas, paga por Pix ou cartão, acompanha e avalia.</p></div>
+        <div class="card"><span class="tag">Entregador / Motorista</span><p>Recebe ofertas, acompanha ganhos e carteira, e pode virar sócio.</p></div>
+        <div class="card"><span class="tag">Comerciante</span><p>Pede entregas para a loja e acompanha gastos e recibos.</p></div>
+        <div class="card"><span class="tag">Administrador</span><p>Conduz a associação: regras, assembleia, seguro, denúncias e sobras.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="corridas">
+    <div class="wrap">
+      <span class="eyebrow">Corridas</span>
+      <h2>Entregas, carro e moto.</h2>
+      <p class="lead">Cada tipo tem sua própria tabela de preço, e o passageiro só vê os tipos liberados pelas regras do município.</p>
+      <div class="grid g3">
+        <div class="card"><div class="icon">📦</div><h3>Entregas</h3><p>Pedidos de clientes e comerciantes, com prova de entrega, recibo e relatório de gastos para o lojista.</p></div>
+        <div class="card"><div class="icon">🚗</div><h3>Corrida de carro</h3><p>Estimativa de preço e de tempo de chegada antes de pedir, dados do veículo e do motorista na tela.</p></div>
+        <div class="card"><div class="icon">🏍️</div><h3>Corrida de moto</h3><p>Disponível conforme a regulamentação municipal. A AMMA trata isso como configuração, não como regra fixa no código.</p></div>
+      </div>
+
+      <h3 style="margin-top:48px">Como o preço é calculado</h3>
+      <div class="card" style="margin-top:14px">
+        <p><b style="color:var(--ink)">valor = máximo entre (base + distância × preço por km + tempo × preço por minuto) e o piso.</b><br>
+        A parte variável arredonda para cima, a favor do trabalhador. As tabelas são da associação, têm versão e data de vigência, e a corrida guarda a versão que usou.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="taxas" class="alt">
+    <div class="wrap">
+      <span class="eyebrow">Taxas</span>
+      <h2>Quanto fica com quem roda.</h2>
+      <p class="lead">Taxa base de 10% sobre cada corrida. Em cima disso, o motorista escolhe se quer contribuir com 0%, 2% ou 4% para a associação. Esse valor não é gasto: vira cotas dele.</p>
+
+      <div class="fees">
+        <div class="card">
+          <label class="field" for="valor">Valor da corrida (R$)</label>
+          <input id="valor" type="number" min="1" step="0.5" value="25">
+          <div style="margin-top:20px;font-weight:600">Taxa de associação</div>
+          <div class="rate-row" id="rates">
+            <button data-r="0">0%</button>
+            <button data-r="2" class="on">2%</button>
+            <button data-r="4">4%</button>
+          </div>
+          <div class="bar"><i class="b-net" id="bNet"></i><i class="b-base" id="bBase"></i><i class="b-assoc" id="bAssoc"></i></div>
+          <ul class="res">
+            <li><span><span class="dot" style="background:var(--red)"></span>Taxa base (10%)</span><span id="rBase"></span></li>
+            <li><span><span class="dot" style="background:#f0a39e"></span>Associação (vira cotas)</span><span id="rAssoc"></span></li>
+            <li><span><span class="dot" style="background:var(--ink)"></span>Fica com o motorista</span><span id="rNet"></span></li>
+          </ul>
+          <p class="note" id="rQuota"></p>
+        </div>
+
+        <div>
+          <div class="card">
+            <h3>Regras que protegem o trabalhador</h3>
+            <ul class="about-list">
+              <li>As duas taxas <b>arredondam para baixo</b>: o centavo quebrado fica com o motorista.</li>
+              <li>Taxa base + associação + líquido <b>sempre somam o valor da corrida</b>, sem sobra escondida.</li>
+              <li>Quem escolhe <b>0%</b> paga só os 10% e continua usando o app normalmente.</li>
+              <li>Cancelou antes do embarque? O cliente recebe <b>100% de volta</b>.</li>
+            </ul>
+          </div>
+          <p class="note">Simulação ilustrativa com a fórmula do app. Os valores de preço por km e por minuto são definidos pela associação.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="associacao">
+    <div class="wrap">
+      <span class="eyebrow">Associação</span>
+      <h2>Quem roda também é dono.</h2>
+      <p class="lead">Cada real de taxa de associação vira cota. A cada R$ 5 acumulados, o motorista ganha 1 cota. Sócio é quem tem ao menos uma.</p>
+
+      <div class="levels">
+        <div class="lvl bronze"><b>Bronze</b><span>0 a 29 cotas</span></div>
+        <div class="lvl prata"><b>Prata</b><span>30 a 59 cotas</span></div>
+        <div class="lvl ouro"><b>Ouro</b><span>60 cotas ou mais</span></div>
+      </div>
+
+      <div class="grid g2">
+        <div class="card"><div class="icon">🗳️</div><h3>Assembleia</h3><p>As decisões da associação vão a votação no app. Cada sócio tem um voto, independente de quantas cotas tem, e pode mudar o voto até o encerramento. O histórico não pode ser alterado.</p></div>
+        <div class="card"><div class="icon">💰</div><h3>Sobras anuais</h3><p>No fim do ano, o que sobrar é dividido entre os sócios, metade proporcional ao uso do app e metade às cotas (o peso é configurável). A conta fecha ao centavo, com simulação obrigatória antes.</p></div>
+        <div class="card"><div class="icon">🚙</div><h3>Compra coletiva de veículos</h3><p>Grupos para comprar carros e motos juntos. A fila combina cotas e tempo de espera, com pesos votados em assembleia, e o dinheiro passa por parceiro regulado.</p></div>
+        <div class="card"><div class="icon">🛡️</div><h3>Seguro mútuo</h3><p>O sócio faz o pedido com anexos, acompanha a linha do tempo e a decisão é sempre humana, com motivo registrado. Quem pediu não decide o próprio pedido.</p></div>
+        <div class="card"><div class="icon">☕</div><h3>Pontos de acolhida</h3><p>Locais com água, banheiro e carregador para quem passa o dia na rua, com mapa, check-in e avaliação.</p></div>
+      </div>
+
+      <div class="legal">
+        <h3>Transparência sobre o dinheiro</h3>
+        <p>A AMMA <b>não capta dinheiro nem concede crédito</b>. Pagamentos e financiamentos passam por parceiros regulados (consórcio e cooperativa de crédito). Dentro do app, cotas e saldos são registros contábeis em livro-razão que só aceita novos lançamentos: nada é apagado ou editado, só estornado com novo registro.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="seguranca" class="dark">
+    <div class="wrap">
+      <span class="eyebrow" style="color:#ff9a92">Segurança</span>
+      <h2>Cuidado de ponta a ponta.</h2>
+      <p class="lead">Nas corridas de passageiro, a segurança é parte do produto, para quem pede e para quem dirige.</p>
+      <div class="grid g3">
+        <div class="card"><h3>Confira antes de entrar</h3><p>O passageiro vê foto, placa, modelo e nota do motorista, e um PIN de embarque que só o motorista certo consegue usar.</p></div>
+        <div class="card"><h3>Compartilhar viagem</h3><p>Um link temporário para um contato acompanhar o trajeto, sem login e que pode ser revogado.</p></div>
+        <div class="card"><h3>Botão de emergência</h3><p>Registra a posição, avisa a associação em tempo real e liga para 190, 192 ou 193.</p></div>
+        <div class="card"><h3>Motorista mulher</h3><p>Passageiras podem pedir motorista mulher; quando pedido, só elas recebem a corrida.</p></div>
+        <div class="card"><h3>Avaliação dos dois lados</h3><p>Passageiro avalia o motorista e o motorista avalia o passageiro.</p></div>
+        <div class="card"><h3>Denúncia com resposta</h3><p>Denúncias ligadas à corrida, com fila de prioridade para casos graves e retorno da associação.</p></div>
+      </div>
+      <p class="note" style="color:#bdb2a9;margin-top:28px">Privacidade: o trajeto só é gravado em corridas de passageiro, fica guardado por 90 dias (salvo denúncia ou alerta) e o acesso da associação é auditado, em linha com a LGPD.</p>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <b>AMMA</b>
+    Associação dos Motoboys e Motoristas de Aplicativo · João Pessoa-PB
+  </div>
+</footer>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  let rate = 2;
+  const brl = (c) => (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+  function render() {
+    // Mesma regra do app: valores em centavos, taxas arredondadas para baixo.
+    const g = Math.max(0, Math.round((parseFloat($('valor').value) || 0) * 100));
+    const base = Math.floor((g * 10) / 100);
+    const assoc = Math.floor((g * rate) / 100);
+    const net = g - base - assoc;
+    $('rBase').textContent = brl(base);
+    $('rAssoc').textContent = brl(assoc);
+    $('rNet').textContent = brl(net);
+    const pct = (v) => (g ? (v / g) * 100 : 0) + '%';
+    $('bNet').style.width = pct(net);
+    $('bBase').style.width = pct(base);
+    $('bAssoc').style.width = pct(assoc);
+    $('rQuota').textContent = assoc
+      ? `Cada ${brl(500)} de associação acumulados viram 1 cota. Esta corrida soma ${brl(assoc)} rumo à próxima.`
+      : 'Com 0% você não acumula cotas por corrida.';
+  }
+
+  $('valor').addEventListener('input', render);
+  $('rates').addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    rate = Number(b.dataset.r);
+    document.querySelectorAll('#rates button').forEach((x) => x.classList.toggle('on', x === b));
+    render();
+  });
+  render();
+</script>
+</body>
+</html>
