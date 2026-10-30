@@ -71,3 +71,14 @@ O ledger agora vive no PostgreSQL (`LedgerTransaction` + `LedgerPosting`), grava
 - **Taxa de associação:** vem de `DriverProfile.associationRate` no momento da conclusão.
 - **Cotas:** `GET /driver/wallet` deriva cotas e fração do saldo da conta `WORKER_QUOTAS:<id>` (as tabelas antigas `QuotaAccount`/`QuotaEntry` não são mais usadas).
 - **Estorno:** a regra existe no `Ledger` em memória do shared; o endpoint/serviço de estorno persistido ainda não foi implementado.
+
+## 6. Pagamento do cliente (Etapa 6)
+
+Código: `packages/shared/src/payment.ts`, `apps/api/src/payments`. O cliente paga o **valor da entrega inteiro** (`fareCents`); as taxas (seções 2–3) saem do que o motorista recebe, como antes. O dinheiro passa pelo **parceiro de pagamento regulado**; a AMMA guarda só o estado.
+
+- **Quando cobra:** na criação do pedido (cartão: na hora; Pix: o cliente tem 15 min). O preço é o da cotação que o cliente viu (`expectedFareCents`); se a tabela mudou, o pedido é recusado antes de cobrar.
+- **Quando entra no ledger:** o fechamento (seção 4) continua acontecendo só no `ENTREGUE`. Pagamento e ledger são independentes: o pagamento diz se o parceiro recebeu; o ledger diz como a corrida é dividida.
+- **Cancelamento:** 100% estornado, qualquer que seja o motivo ou o ator (inclusive quando o cliente desiste depois de o motorista aceitar). Como nada é cobrado do cliente por cancelar, **o motorista que já estava a caminho não recebe nada**: multa/ressarcimento é regra de negócio ainda **não definida**.
+- **Estorno é total e único:** `PAGO → ESTORNADO` uma vez só; o provedor recebe a mesma cobrança como chave, então repetir não devolve duas vezes.
+- **Entrega concluída:** sem estorno automático. Estornar exigiria reverter o fechamento no ledger (hoje só existe em memória no `shared`, ver seção 5) e decidir quem arca com o repasse já feito ao motorista.
+- **Relatório do comerciante:** gasto = soma de `fareCents` dos pedidos com pagamento `PAGO`; estornados aparecem à parte; Pix pendente/expirado não conta.

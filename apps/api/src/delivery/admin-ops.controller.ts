@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
   Param,
   ParseUUIDPipe,
   Post,
@@ -14,7 +15,7 @@ import { Roles, RolesGuard } from '../auth/roles';
 import { DispatchSettingsService } from '../dispatch/dispatch-settings.service';
 import { PricingService } from '../pricing/pricing.service';
 import { DeliveryService } from './delivery.service';
-import { DispatchSettingsDto, PricingDto } from './dto';
+import { DispatchSettingsDto, PricingDto, RefundDto } from './dto';
 
 /** Configuração e auditoria do despacho/preço (somente administrador). */
 @Controller('admin')
@@ -50,5 +51,11 @@ export class AdminOpsController {
   @Get('deliveries/:id/events')
   events(@Param('id', ParseUUIDPipe) id: string) {
     return this.deliveries.events(id);
+  }
+
+  @Post('deliveries/:id/refund')
+  @HttpCode(200)
+  refund(@Param('id', ParseUUIDPipe) id: string, @Body() dto: RefundDto) {
+    return this.deliveries.adminRefund(id, dto.reason);
   }
 }

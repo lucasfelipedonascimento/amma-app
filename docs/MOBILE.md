@@ -91,6 +91,27 @@ node scripts/demo-delivery.mjs <LATITUDE> <LONGITUDE> http://IP_DO_PC:3000
 - [ ] Com entrega em andamento e sem internet, o botão da etapa fica desabilitado.
 - [ ] Matar o app (arrastar da lista de recentes) estando online: a posição continua chegando (tarefa do sistema) — **teste mais sujeito a variação por fabricante** (Xiaomi, Samsung e outros matam apps em segundo plano; veja <https://dontkillmyapp.com>).
 
+### F. App do cliente e do comerciante (Etapa 6)
+
+Entre com a passageira do seed (`+5583999990002`) ou a comerciante (`+5583999990006`). Para ver o pedido andando, deixe um motorista online (`+5583999990003`) em outro aparelho/emulador, perto da coleta. **Tudo aqui usa o pagamento de teste:** nenhum Pix ou cartão real é cobrado.
+
+- [ ] **Pedir:** coleta, entrega e descrição obrigatórias; “Usar minha localização” preenche a coleta (pede permissão _durante o uso_).
+- [ ] Endereço que o aparelho não acha → mensagem dizendo qual (coleta ou entrega). Endereços sem cidade são buscados em João Pessoa.
+- [ ] “Ver preço” mostra mapa com os dois pontos, distância, tempo e **total antes de pagar**. Nada é cobrado até “Confirmar e pagar”.
+- [ ] **Cartão** `4242 4242 4242 4242` (qualquer validade futura e CVV de 3 dígitos): pedido nasce pago e vai ao motorista. `4000 0000 0000 0002` → “Cartão recusado pelo banco” e **nenhum pedido** aparece em Pedidos. Número com dígito trocado → “Confira o número do cartão.”
+- [ ] **Pix:** abre o acompanhamento com “Aguardando o pagamento”, código `PIX-SIMULADO…`, contagem de 15 min e o botão **Simular pagamento do Pix** → vira “Pago” e o motorista recebe a oferta. Sem pagar, o motorista **não** recebe nada.
+- [ ] Deixar um Pix vencer (ou no banco: `UPDATE "Payment" SET "pixExpiresAt" = now() WHERE method='PIX'` e esperar ~3 s): pedido “Cancelado — O Pix não foi pago a tempo.”
+- [ ] **Acompanhar:** etapas mudam conforme o motorista avança; o ponto vermelho do motorista anda no mapa; com a API parada aparece a faixa amarela (consulta a cada 5 s) e volta sozinho.
+- [ ] **Cancelar** até a coleta pede confirmação; pago → “O valor pago será devolvido” e, depois, pagamento “Estornado”. Depois de coletado o botão não existe.
+- [ ] **Entregue:** pede nota (1–5 estrelas, obrigatória) e comentário opcional; depois mostra “Sua avaliação”. Não dá para avaliar duas vezes.
+- [ ] **Recibo** (pago ou estornado): número `AMMA-AAAAMMDD-XXXXXXXX`, valores, forma de pagamento, aviso “não é nota fiscal”; “Compartilhar” abre o menu do sistema. O motorista **não** vê o recibo nem o pagamento.
+- [ ] **Pedidos:** “Em andamento” em cima, “Anteriores” embaixo, com situação do pagamento; a aba Pedidos mostra bolinha enquanto há pedido aberto.
+- [ ] **Comerciante:** abas Loja e Relatório aparecem só para ele. Loja: nome, CNPJ opcional (máscara; inválido é recusado), endereço; depois disso a coleta em Pedir já vem preenchida. Sem cadastro, Pedir mostra o convite para cadastrar.
+- [ ] **Relatório:** 7/30/90 dias, gasto (só pago), pedidos, cancelados, gasto médio, estornado e barras por dia.
+- [ ] Conta: sair e excluir conta funcionam; a exclusão é recusada com pedido em andamento.
+
+> Mapa: como no app do motorista, o mapa real do Android precisa de `GOOGLE_MAPS_API_KEY` (build próprio).
+
 ## 4. Problemas comuns
 
 | Sintoma                              | Causa provável                                                                                                                                |
@@ -106,6 +127,6 @@ node scripts/demo-delivery.mjs <LATITUDE> <LONGITUDE> http://IP_DO_PC:3000
 
 ```
 pnpm --filter @amma/shared build
-pnpm --filter @amma/mobile test       # Jest: 97 testes de componentes, hooks, provider e WebSocket
+pnpm --filter @amma/mobile test       # Jest: 150 testes (motorista e cliente): componentes, hooks, provider e WebSocket
 pnpm --filter @amma/mobile typecheck && pnpm lint
 ```

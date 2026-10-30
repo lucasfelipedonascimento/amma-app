@@ -52,8 +52,10 @@ Um workflow de CI e um de deploy por app, filtrados por `paths` (a pasta do app 
 | `pricing/`  | Tabelas de preço versionadas                                                                             |
 | `routing/`  | `RouteProvider` (simulado e Mapbox); devolve o trajeto (`path`) quando pedido                            |
 | `push/`     | `PushService` + `PushSender` (simulado e Expo): aviso de nova oferta com o app fechado (Etapa 5)         |
+| `payments/` | `PaymentProvider` (sandbox), cobrança, Pix pendente/vencido, estorno, rotina de repetição (Etapa 6)      |
+| `merchant/` | Cadastro do estabelecimento e relatório do comerciante (Etapa 6)                                         |
 
-As regras puras (estados, cancelamento, ranking do despacho, geo) ficam em `packages/shared` e são testadas lá; a API só busca dados e aplica.
+As regras puras (estados, cancelamento, ranking do despacho, geo, estados do pagamento e política de estorno, recibo, relatório do comerciante) ficam em `packages/shared` e são testadas lá; a API só busca dados e aplica.
 
 ## App do motorista (`apps/mobile/src/driver`, Etapa 5)
 
@@ -70,8 +72,22 @@ As regras puras (estados, cancelamento, ranking do despacho, geo) ficam em `pack
 
 O motorista continua sem biblioteca de navegação: o estado decide a tela (ver `docs/DECISOES.md`). Regras de ganhos (comparativo de 25%, semana, simulador, detalhamento da oferta) vivem em `packages/shared/src/earnings.ts`.
 
+## App do cliente e do comerciante (`apps/mobile/src/client`, Etapa 6)
+
+| Arquivo/pasta                  | Responsabilidade                                                                                                                                                                 |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ClientProvider.tsx`           | Pedidos, estabelecimento, `GET /payments/config` e um WebSocket único que reparte os eventos; consulta a cada 5 s sem ele                                                        |
+| `ClientApp.tsx`                | Abas Pedir / Pedidos / (Loja / Relatório, só comerciante) / Conta; acompanhamento e recibo abrem por cima das abas                                                               |
+| `screens/`                     | `NewDeliveryScreen` (origem, destino, descrição → preço → pagamento), `TrackingScreen`, `OrdersScreen`, `ReceiptScreen`, `MerchantScreen`, `ReportScreen`, `ClientAccountScreen` |
+| `components/`                  | `DeliveryMap`, `ClientSteps`, `PixPanel`, `CardForm`, `RatingStars`, `DeliveryItem`, `DayBars`                                                                                   |
+| `hooks.ts`                     | `useLiveDelivery` (pedido ao vivo), `useRemote`, `useNow`                                                                                                                        |
+| `address.ts`                   | Endereço ⇄ coordenadas com o geocodificador do aparelho (`expo-location`), sem chave nossa                                                                                       |
+| `labels.ts` / `receiptText.ts` | Textos em português dos estados, motivos e pagamento; texto do recibo para compartilhar                                                                                          |
+
+Reaproveita `Page/Card/Row`, `TabBar` e os estados de carregamento/erro/sem internet de `src/driver/components` (mesma identidade visual). Quem tem o papel MOTORISTA continua indo para o app do motorista.
+
 ## Testes
 
 - `pnpm test` — unitários, sem banco (shared e api).
-- `pnpm --filter @amma/mobile test` — Jest (jest-expo + Testing Library): componentes, hooks, provider e cliente WebSocket, com os módulos nativos trocados por mocks (`apps/mobile/jest.setup.ts`). **Não** substitui o teste em celular real (`docs/MOBILE.md`).
+- `pnpm --filter @amma/mobile test` — Jest (jest-expo + Testing Library): componentes, hooks, provider e cliente WebSocket (motorista e cliente), com os módulos nativos trocados por mocks (`apps/mobile/jest.setup.ts`). **Não** substitui o teste em celular real (`docs/MOBILE.md`).
 - `pnpm --filter @amma/api test:int` — integração com Postgres/PostGIS e Redis reais (`docker compose up -d`). Usa o banco `amma_test` e o Redis db 15, criados/migrados automaticamente. No CI, `ci-api.yml` sobe os dois serviços.

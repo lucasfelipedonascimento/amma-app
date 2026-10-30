@@ -10,6 +10,9 @@ import { DispatchService } from '../dispatch/dispatch.service';
 import { DispatchSettingsService } from '../dispatch/dispatch-settings.service';
 import { DriverService } from '../driver/driver.service';
 import { LedgerService } from '../ledger/ledger.service';
+import { PAYMENT_PROVIDER, createPaymentProvider } from '../payments/payment-provider';
+import { PaymentsController } from '../payments/payments.controller';
+import { PaymentsService } from '../payments/payments.service';
 import { PositionStore } from '../presence/position-store';
 import { PresenceService } from '../presence/presence.service';
 import { PricingService } from '../pricing/pricing.service';
@@ -23,7 +26,13 @@ import { DriverOpsController } from './driver-ops.controller';
 /** Entregas, despacho, presença do motorista, tempo real e ledger (Etapa 4). */
 @Module({
   exports: [PositionStore],
-  controllers: [DeliveryController, DriverOpsController, AdminOpsController, DispatchController],
+  controllers: [
+    DeliveryController,
+    DriverOpsController,
+    AdminOpsController,
+    DispatchController,
+    PaymentsController,
+  ],
   providers: [
     RedisService,
     PositionStore,
@@ -32,6 +41,12 @@ import { DriverOpsController } from './driver-ops.controller';
     RealtimeGateway,
     PricingService,
     LedgerService,
+    PaymentsService,
+    {
+      provide: PAYMENT_PROVIDER,
+      inject: [ConfigService],
+      useFactory: createPaymentProvider,
+    },
     DispatchSettingsService,
     DispatchService,
     DispatchScheduler,

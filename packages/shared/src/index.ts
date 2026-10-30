@@ -13,3 +13,7 @@ export * from './delivery-state';
 export * from './dispatch';
 export * from './earnings';
 export * from './location-consent';
+export * from './payment';
+export * from './receipt';
+export * from './merchant';
+export * from './rating';

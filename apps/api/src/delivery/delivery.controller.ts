@@ -12,7 +12,7 @@ import {
 } from '@nestjs/common';
 import { AuthGuard, AuthUser } from '../auth/auth.guard';
 import { Roles, RolesGuard } from '../auth/roles';
-import { CancelDto, CreateDeliveryDto, ListDeliveriesQuery } from './dto';
+import { CancelDto, CreateDeliveryDto, ListDeliveriesQuery, QuoteDto, RatingDto } from './dto';
 import { DeliveryService } from './delivery.service';
 
 type Req_ = { user: AuthUser };
@@ -26,7 +26,7 @@ export class DeliveryController {
   @Post('quote')
   @HttpCode(200)
   @Roles('PASSAGEIRO', 'COMERCIANTE')
-  quote(@Body() dto: CreateDeliveryDto) {
+  quote(@Body() dto: QuoteDto) {
     return this.deliveries.quote(dto);
   }
 
@@ -40,6 +40,17 @@ export class DeliveryController {
   @Roles('PASSAGEIRO', 'COMERCIANTE')
   list(@Req() req: Req_, @Query() q: ListDeliveriesQuery) {
     return this.deliveries.list(req.user.id, q.status, q.limit);
+  }
+
+  @Post(':id/rating')
+  @Roles('PASSAGEIRO', 'COMERCIANTE')
+  rate(@Req() req: Req_, @Param('id', ParseUUIDPipe) id: string, @Body() dto: RatingDto) {
+    return this.deliveries.rate(req.user, id, dto);
+  }
+
+  @Get(':id/receipt')
+  receipt(@Req() req: Req_, @Param('id', ParseUUIDPipe) id: string) {
+    return this.deliveries.receipt(req.user, id);
   }
 
   // Dono, motorista responsável ou admin (a checagem fina é no serviço).

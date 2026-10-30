@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { DROPOFF, PICKUP, TestApp, near, type TestUser } from './helpers';
+import { CARD_OK, DROPOFF, PICKUP, TestApp, near, type TestUser } from './helpers';
 
 describe('despacho', () => {
   let t: TestApp;
@@ -194,6 +194,11 @@ describe('despacho', () => {
         where: { id: d.id },
         data: { createdAt: new Date(Date.now() - 301_000) },
       });
+      // A janela de busca conta do pagamento: o cartão foi cobrado na hora do pedido.
+      await t.prisma.payment.update({
+        where: { deliveryId: d.id },
+        data: { paidAt: new Date(Date.now() - 301_000) },
+      });
       await t.dispatch.tick();
       const after = (await t.get(`/deliveries/${d.id}`, client.token)).body;
       expect(after).toMatchObject({ status: 'CANCELADO', cancelReason: 'SEM_MOTORISTA' });
@@ -235,7 +240,9 @@ describe('despacho', () => {
       await t.online(driver, near(200));
       const clients = await Promise.all(Array.from({ length: 6 }, () => t.client()));
       await Promise.all(
-        clients.map((c) => t.post('/deliveries', c.token, { pickup: PICKUP, dropoff: DROPOFF })),
+        clients.map((c) =>
+          t.post('/deliveries', c.token, { pickup: PICKUP, dropoff: DROPOFF, payment: CARD_OK }),
+        ),
       );
       await t.dispatch.tick();
       expect(await t.prisma.deliveryOffer.count({ where: { status: 'PENDENTE' } })).toBe(1);

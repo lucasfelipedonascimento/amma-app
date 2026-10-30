@@ -1,6 +1,7 @@
 import { ConflictException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import {
   ACTIVE_DRIVER_STATUSES,
+  canDispatch,
   chooseCandidate,
   type DeclineReason,
   type DispatchCandidate,
@@ -8,6 +9,7 @@ import {
   type DispatchReason,
 } from '@amma/shared';
 import { type Delivery } from '@prisma/client';
+import { PaymentsService } from '../payments/payments.service';
 import { PrismaService } from '../prisma.service';
 import { PresenceService } from '../presence/presence.service';
 import { PushService } from '../push/push.service';
@@ -52,17 +54,28 @@ export class DispatchService {
     private readonly presence: PresenceService,
     private readonly realtime: RealtimeService,
     private readonly push: PushService,
+    private readonly payments: PaymentsService,
     @Inject(ROUTE_PROVIDER) private readonly routes: RouteProvider,
   ) {}
 
   // ---------------------------------------------------------------- escolha e oferta
 
   async dispatch(deliveryId: string): Promise<DispatchOutcome> {
-    const delivery = await this.prisma.delivery.findUnique({ where: { id: deliveryId } });
+    const delivery = await this.prisma.delivery.findUnique({
+      where: { id: deliveryId },
+      include: { payment: { select: { status: true, paidAt: true } } },
+    });
     if (!delivery || delivery.status !== 'CRIADO') return 'SKIPPED';
+    // Só procura motorista depois de o pagamento ser confirmado.
+    if (!canDispatch(delivery.payment?.status ?? null)) return 'SKIPPED';
     const config = await this.settings.get();
 
-    if (Date.now() - delivery.createdAt.getTime() > config.maxSearchSeconds * 1000) {
+    // A janela de busca conta do pagamento: quem pagou o Pix aos 10 min não perde a busca inteira.
+    const searchStart = Math.max(
+      delivery.createdAt.getTime(),
+      delivery.payment?.paidAt?.getTime() ?? 0,
+    );
+    if (Date.now() - searchStart > config.maxSearchSeconds * 1000) {
       const ok = await this.prisma.$transaction(async (tx) => {
         const moved = await cancelDelivery(tx, {
           id: delivery.id,
@@ -78,12 +91,15 @@ export class DispatchService {
           });
         return moved;
       });
-      if (ok)
+      if (ok) {
         this.realtime.sendToUser(delivery.clientId, 'delivery.updated', {
           id: delivery.id,
           status: 'CANCELADO',
           cancelReason: 'SEM_MOTORISTA',
         });
+        // Ninguém aceitou: o cliente recebe o dinheiro de volta.
+        await this.payments.afterCancel(delivery.id);
+      }
       return ok ? 'CANCELLED' : 'SKIPPED';
     }
 
@@ -420,7 +436,11 @@ export class DispatchService {
     for (const o of expired) await this.closeOffer(o.id, 'EXPIRADA', 'EXPIROU');
 
     const waiting = await this.prisma.delivery.findMany({
-      where: { status: 'CRIADO' },
+      // Pix ainda não pago fica de fora (canDispatch); pedido sem pagamento segue livre.
+      where: {
+        status: 'CRIADO',
+        OR: [{ payment: { is: null } }, { payment: { is: { status: 'PAGO' } } }],
+      },
       select: { id: true },
       orderBy: { createdAt: 'asc' },
       take: 100,

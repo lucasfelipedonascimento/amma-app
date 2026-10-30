@@ -20,6 +20,10 @@ jest.mock('expo-location', () => ({
   stopLocationUpdatesAsync: jest.fn(async () => undefined),
   hasStartedLocationUpdatesAsync: jest.fn(async () => false),
   watchPositionAsync: jest.fn(async () => ({ remove: jest.fn() })),
+  geocodeAsync: jest.fn(async () => [{ latitude: -7.115, longitude: -34.861 }]),
+  reverseGeocodeAsync: jest.fn(async () => [
+    { street: 'Rua das Flores', streetNumber: '10', district: 'Manaíra', city: 'João Pessoa' },
+  ]),
 }));
 
 jest.mock('expo-task-manager', () => ({ defineTask: jest.fn() }));

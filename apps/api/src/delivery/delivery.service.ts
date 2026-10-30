@@ -15,8 +15,11 @@ import {
   buildRideSettlement,
   calculateFare,
   calculateRideFees,
+  buildReceipt,
   canCancel,
+  canIssueReceipt,
   haversineMeters,
+  refundAction,
   type AssociationRate,
   type GeoPoint,
   type CancelReason,
@@ -32,7 +35,8 @@ import { PrismaService } from '../prisma.service';
 import { PricingService } from '../pricing/pricing.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { ROUTE_PROVIDER, type RouteProvider } from '../routing/route-provider';
-import { CancelDto, CreateDeliveryDto } from './dto';
+import { PaymentsService } from '../payments/payments.service';
+import { CancelDto, CreateDeliveryDto, QuoteDto, RatingDto } from './dto';
 import { cancelDelivery, moveStatus } from './transitions';
 import { deliveryView, type Viewer } from './views';
 
@@ -63,13 +67,14 @@ export class DeliveryService {
     private readonly realtime: RealtimeService,
     private readonly positions: PositionStore,
     private readonly presence: PresenceService,
+    private readonly payments: PaymentsService,
     @Inject(ROUTE_PROVIDER) private readonly routes: RouteProvider,
   ) {}
 
   // ---------------------------------------------------------------- cliente
 
   /** Cotação: rota do provedor + tabela de preço vigente (com piso). Não cria nada. */
-  async quote(dto: CreateDeliveryDto) {
+  async quote(dto: QuoteDto) {
     if (haversineMeters(dto.pickup, dto.dropoff) < MIN_PICKUP_DROPOFF_METERS)
       throw new BadRequestException('Coleta e entrega estão no mesmo lugar');
     const route = await this.routes.route(dto.pickup, dto.dropoff).catch((e: Error) => {
@@ -87,33 +92,71 @@ export class DeliveryService {
     };
   }
 
+  /**
+   * Pede a entrega e cobra. Cartão: cobrado na hora (recusado → 402 e nada é criado). Pix: o pedido
+   * nasce `CRIADO` com pagamento PENDENTE e só entra no despacho depois de pago.
+   * A chave de idempotência faz repetir o pedido devolver o mesmo, sem cobrar de novo.
+   */
   async create(user: AuthUser, dto: CreateDeliveryDto) {
     const clientId = user.id;
+    const key = dto.idempotencyKey;
+    const existing = () =>
+      key
+        ? this.prisma.delivery.findUnique({
+            where: { clientId_idempotencyKey: { clientId, idempotencyKey: key } },
+            select: { id: true },
+          })
+        : null;
+    const prev = await existing();
+    if (prev) return this.get(user, prev.id);
+
     const q = await this.quote(dto);
-    const delivery = await this.prisma.$transaction(async (tx) => {
-      const d = await tx.delivery.create({
-        data: {
-          clientId,
-          pickupLat: dto.pickup.lat,
-          pickupLng: dto.pickup.lng,
-          pickupAddress: dto.pickup.address.trim(),
-          dropoffLat: dto.dropoff.lat,
-          dropoffLng: dto.dropoff.lng,
-          dropoffAddress: dto.dropoff.address.trim(),
-          notes: dto.notes?.trim() || null,
-          ...q,
-        },
-      });
-      await tx.deliveryEvent.create({
-        data: { deliveryId: d.id, type: 'STATUS', toStatus: 'CRIADO', actorId: clientId },
-      });
-      return d;
+    if (dto.expectedFareCents !== undefined && dto.expectedFareCents !== q.fareCents)
+      throw new ConflictException('O preço mudou. Confira o novo valor antes de confirmar.');
+    const id = randomUUID();
+    const charge = await this.payments.charge({
+      reference: id,
+      amountCents: q.fareCents,
+      method: dto.payment.method,
+      cardToken: dto.payment.cardToken,
     });
-    // Primeira tentativa de despacho na hora; se falhar, a rotina periódica tenta de novo.
-    await this.dispatch
-      .dispatch(delivery.id)
-      .catch((e: Error) => this.logger.error(`Despacho inicial falhou: ${e.message}`));
-    return this.get(user, delivery.id);
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.delivery.create({
+          data: {
+            id,
+            clientId,
+            idempotencyKey: key,
+            pickupLat: dto.pickup.lat,
+            pickupLng: dto.pickup.lng,
+            pickupAddress: dto.pickup.address.trim(),
+            dropoffLat: dto.dropoff.lat,
+            dropoffLng: dto.dropoff.lng,
+            dropoffAddress: dto.dropoff.address.trim(),
+            notes: dto.notes?.trim() || null,
+            ...q,
+            payment: { create: charge },
+          },
+        });
+        await tx.deliveryEvent.create({
+          data: { deliveryId: id, type: 'STATUS', toStatus: 'CRIADO', actorId: clientId },
+        });
+      });
+    } catch (e) {
+      // Cobrou mas não gravou: devolve o dinheiro antes de falhar.
+      await this.payments.undoCharge(charge);
+      if ((e as { code?: string }).code === 'P2002') {
+        const dup = await existing();
+        if (dup) return this.get(user, dup.id);
+      }
+      throw e;
+    }
+    // Pago (cartão): primeira tentativa de despacho na hora; se falhar, a rotina periódica tenta de novo.
+    if (charge.status === 'PAGO')
+      await this.dispatch
+        .dispatch(id)
+        .catch((e: Error) => this.logger.error(`Despacho inicial falhou: ${e.message}`));
+    return this.get(user, id);
   }
 
   list(clientId: string, status?: DeliveryStatus, limit = 20) {
@@ -122,16 +165,16 @@ export class DeliveryService {
         where: { clientId, ...(status ? { status } : {}) },
         orderBy: { createdAt: 'desc' },
         take: limit,
-        include: { worker: { select: { name: true } } },
+        include: { worker: { select: { name: true } }, payment: true, rating: true },
       })
-      .then((rows) => rows.map((d) => deliveryView(d, 'CLIENTE')));
+      .then((rows) => rows.map((d) => deliveryView(d, 'CLIENTE', this.payments.provider)));
   }
 
   /** Cliente dono, motorista responsável ou admin. Para os demais, "não encontrado". */
   async get(user: AuthUser, id: string) {
     const d = await this.prisma.delivery.findUnique({
       where: { id },
-      include: { worker: { select: { name: true } } },
+      include: { worker: { select: { name: true } }, payment: true, rating: true },
     });
     const viewer = this.viewerOf(user, d);
     if (!d || !viewer) throw new NotFoundException('Pedido não encontrado');
@@ -146,7 +189,7 @@ export class DeliveryService {
         : null,
     ]);
     return {
-      ...deliveryView(d, viewer),
+      ...deliveryView(d, viewer, this.payments.provider),
       timeline: events.map((e) => ({ status: e.toStatus, reason: e.reason, at: e.createdAt })),
       driverPosition,
     };
@@ -215,7 +258,90 @@ export class DeliveryService {
     for (const o of pending)
       this.realtime.sendToUser(o.driverId, 'offer.closed', { offerId: o.id, reason: 'CANCELADO' });
     this.notify(d, 'CANCELADO', dto.reason);
+    // Cancelou: devolve o dinheiro (ou invalida o Pix pendente). Se falhar, a rotina tenta de novo.
+    await this.payments.afterCancel(id);
     return this.get(user, id);
+  }
+
+  // ---------------------------------------------------------------- avaliação, recibo e estorno
+
+  /** O cliente avalia o motorista, uma vez, depois de entregue. */
+  async rate(user: AuthUser, id: string, dto: RatingDto) {
+    const d = await this.prisma.delivery.findUnique({ where: { id } });
+    if (!d || d.clientId !== user.id) throw new NotFoundException('Pedido não encontrado');
+    if (d.status !== 'ENTREGUE' || !d.workerId)
+      throw new ConflictException('Só dá para avaliar uma entrega concluída');
+    try {
+      await this.prisma.rating.create({
+        data: {
+          deliveryId: id,
+          authorId: user.id,
+          driverId: d.workerId,
+          stars: dto.stars,
+          comment: dto.comment?.trim() || null,
+        },
+      });
+    } catch (e) {
+      if ((e as { code?: string }).code === 'P2002')
+        throw new ConflictException('Você já avaliou esta entrega');
+      throw e;
+    }
+    return this.get(user, id);
+  }
+
+  /** Recibo do pagamento. Só o cliente dono (ou o admin), e só com pagamento confirmado. */
+  async receipt(user: AuthUser, id: string) {
+    const d = await this.prisma.delivery.findUnique({ where: { id }, include: { payment: true } });
+    const viewer = this.viewerOf(user, d);
+    if (!d || (viewer !== 'CLIENTE' && viewer !== 'ADMIN'))
+      throw new NotFoundException('Pedido não encontrado');
+    const p = d.payment;
+    const input = {
+      deliveryId: d.id,
+      createdAt: d.createdAt.toISOString(),
+      deliveredAt: d.deliveredAt?.toISOString() ?? null,
+      status: d.status,
+      pickupAddress: d.pickupAddress,
+      dropoffAddress: d.dropoffAddress,
+      distanceMeters: d.distanceMeters,
+      durationSeconds: d.durationSeconds,
+      fareCents: d.fareCents,
+      minimumApplied: d.minimumApplied,
+      pricingVersion: d.pricingVersion,
+      payment: p && {
+        method: p.method,
+        status: p.status,
+        amountCents: p.amountCents,
+        cardBrand: p.cardBrand,
+        cardLast4: p.cardLast4,
+        paidAt: p.paidAt?.toISOString() ?? null,
+        refundedAt: p.refundedAt?.toISOString() ?? null,
+      },
+    };
+    if (!canIssueReceipt(input))
+      throw new ConflictException('O recibo fica disponível depois que o pagamento é confirmado');
+    return buildReceipt(input);
+  }
+
+  /**
+   * Estorno pelo admin: serve para repetir um estorno que falhou. Pedido ENTREGUE não é estornado
+   * aqui: devolver o dinheiro exigiria reverter o repasse do motorista, e a regra de disputa ainda
+   * não existe (ver docs/PROGRESSO.md).
+   */
+  async adminRefund(id: string, reason: string) {
+    const d = await this.prisma.delivery.findUnique({ where: { id }, include: { payment: true } });
+    if (!d?.payment) throw new NotFoundException('Pagamento não encontrado');
+    const action = refundAction(d.status, d.payment.status);
+    if (action === 'MANUAL')
+      throw new ConflictException(
+        'Pedido já entregue: o estorno depende de reverter o repasse do motorista (regra de disputa pendente)',
+      );
+    if (action !== 'ESTORNAR')
+      throw new ConflictException('Não há pagamento a estornar neste pedido');
+    await this.payments.refund(id, `ADMIN: ${reason}`);
+    return this.prisma.payment
+      .findUniqueOrThrow({ where: { deliveryId: id } })
+      .then((p) => ({ status: p.status, refundedAt: p.refundedAt }));
   }
 
   // ---------------------------------------------------------------- motorista

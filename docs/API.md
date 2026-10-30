@@ -30,15 +30,16 @@ Depois de `COLETADO` o pedido **não volta** para `CRIADO`.
 
 ### Motivos de cancelamento
 
-| `reason`             | Quem pede | Quando                                                          |
-| -------------------- | --------- | --------------------------------------------------------------- |
-| `CLIENTE_DESISTIU`   | cliente   | `CRIADO`, `OFERECIDO`, `ACEITO`, `A_CAMINHO_COLETA`             |
-| `COLETA_IMPOSSIVEL`  | motorista | `A_CAMINHO_COLETA`                                              |
-| `ENTREGA_IMPOSSIVEL` | motorista | `COLETADO`, `A_CAMINHO_ENTREGA`                                 |
-| `ADMIN_CANCELOU`     | admin     | qualquer estado não final; **exige** `note` (justificativa)     |
-| `SEM_MOTORISTA`      | sistema   | `CRIADO`, quando acaba o tempo máximo de busca (não é chamável) |
+| `reason`                   | Quem pede | Quando                                                          |
+| -------------------------- | --------- | --------------------------------------------------------------- |
+| `CLIENTE_DESISTIU`         | cliente   | `CRIADO`, `OFERECIDO`, `ACEITO`, `A_CAMINHO_COLETA`             |
+| `COLETA_IMPOSSIVEL`        | motorista | `A_CAMINHO_COLETA`                                              |
+| `ENTREGA_IMPOSSIVEL`       | motorista | `COLETADO`, `A_CAMINHO_ENTREGA`                                 |
+| `ADMIN_CANCELOU`           | admin     | qualquer estado não final; **exige** `note` (justificativa)     |
+| `SEM_MOTORISTA`            | sistema   | `CRIADO`, quando acaba o tempo máximo de busca (não é chamável) |
+| `PAGAMENTO_NAO_CONFIRMADO` | sistema   | `CRIADO`, quando o Pix não é pago em 15 min (não é chamável)    |
 
-Cancelamento não gera lançamento financeiro. Multas/ressarcimentos ainda **não** existem (ver pendências).
+Cancelamento não gera lançamento financeiro no ledger. **Todo cancelamento devolve 100% do valor pago** (estorno automático, seção 12); multas/ressarcimentos ainda **não** existem (ver pendências).
 
 ## 2. Despacho (regras públicas)
 
@@ -101,7 +102,23 @@ O preço vem de `calculateFare` (base + km + minuto, com piso — `docs/REGRAS_F
 
 ### `POST /deliveries` → 201
 
-Cria o pedido (estado `CRIADO`), congela a cotação e **já tenta despachar**; a resposta traz o estado atual (normalmente `OFERECIDO` ou `CRIADO`). Resposta = visão do pedido (seção 6).
+Cria o pedido, **cobra** e congela a cotação. Corpo = o da cotação mais:
+
+```json
+{
+  "payment": { "method": "PIX" },
+  "idempotencyKey": "tentativa-abc12345",
+  "expectedFareCents": 1100
+}
+```
+
+- `payment` (obrigatório): `{ "method": "PIX" }` ou `{ "method": "CARTAO", "cardToken": "…" }` (token do provedor; **o número do cartão nunca chega à API**). Detalhes na seção 12.
+- `idempotencyKey` (opcional, 8–64 `[A-Za-z0-9_-]`): repetir o pedido com a mesma chave devolve o **mesmo** pedido e não cobra de novo (duplo toque, rede instável). Vale por cliente.
+- `expectedFareCents` (opcional): o preço que o cliente viu. Se a tabela de preço mudou desde a cotação → `409` **antes** de cobrar.
+- Cartão recusado → `402` com o motivo e **nada é criado**; provedor fora do ar → `503`.
+- Cartão aprovado: o pedido nasce pago e **já tenta despachar**; a resposta traz o estado atual (normalmente `OFERECIDO` ou `CRIADO`). Pix: nasce `CRIADO` com pagamento `PENDENTE` e **só entra no despacho depois de pago**.
+
+Resposta = visão do pedido (seção 6).
 
 ### `GET /deliveries?status=&limit=` → 200
 
@@ -199,12 +216,16 @@ Cancelamento administrativo: `POST /deliveries/:id/cancel` com `ADMIN_CANCELOU` 
   "createdAt": "…", "acceptedAt": "…", "pickedUpAt": null, "deliveredAt": null,
   "driver": { "id": "…", "name": "Maria" },
   "settlement": null,
+  "payment": { "method": "CARTAO", "status": "PAGO", "amountCents": 1100, "pixCode": null, "pixExpiresAt": null,
+               "cardBrand": "visa", "cardLast4": "4242", "paidAt": "…", "refundedAt": null, "sandbox": true },
+  "rating": { "stars": 5, "comment": "…", "at": "…" },
   "timeline": [{ "status": "CRIADO", "reason": null, "at": "…" }],
   "driverPosition": null
 }
 ```
 
 - `driver` aparece para cliente/admin (só id e nome — **nunca telefone**); o motorista recebe `null`.
+- `payment` e `rating` aparecem para **cliente e admin**; o motorista recebe `null` nos dois. `pixCode` só existe enquanto o Pix está `PENDENTE`.
 - `settlement` (`platformFeeCents`, `associationFeeCents`, `workerNetCents`, `associationRate`) só existe em `ENTREGUE` e **só para motorista/admin**; o cliente não vê o repasse.
 
 ## 7. Tempo real — WebSocket `/ws`
@@ -229,6 +250,7 @@ Mensagens JSON `{ "event": "...", "data": ... }`.
    | `offer.closed`     | motorista           | `{ offerId, reason }` (`EXPIROU`, `RECUSOU`, `FICOU_OFFLINE`, `CANCELADO`) |
    | `delivery.updated` | cliente e motorista | `{ id, status, cancelReason? }`                                            |
    | `driver.position`  | cliente             | `{ deliveryId, lat, lng, at }` — só com entrega em andamento               |
+   | `payment.updated`  | cliente             | `{ deliveryId, status }` (`PAGO`, `EXPIRADO`, `ESTORNADO`)                 |
 
 Se um evento se perder, o REST sempre devolve o estado atual (`GET /driver/offers/current`, `GET /deliveries/:id`).
 
@@ -260,7 +282,7 @@ CRÉDITO WORKER_QUOTAS:<id>          22     (omitido se a taxa de associação �
 
 ## 10. Variáveis de ambiente novas
 
-`REDIS_URL`, `ROUTE_PROVIDER`, `MAPBOX_ACCESS_TOKEN`, `DISPATCH_TICK_MS` (ver `.env.example`).
+`REDIS_URL`, `ROUTE_PROVIDER`, `MAPBOX_ACCESS_TOKEN`, `DISPATCH_TICK_MS` (ver `.env.example`). Etapa 6: `PAYMENT_PROVIDER` (seção 12).
 
 ## 11. App do motorista (Etapa 5) — rotas de `MOTORISTA`
 
@@ -357,3 +379,86 @@ O servidor **não** impede `presence/online` sem consentimento (o contrato da Et
 A cada **nova oferta** o motorista recebe um push (título "Novo pedido de entrega", corpo "Você recebe R$ 9,68 · corrida de 2,9 km", `data: { type: "offer", offerId }`, prioridade alta, canal Android `offers`, `ttl` = tempo que falta para a oferta vencer). **Sem endereços**: a tela bloqueada é pública. Enviado em paralelo ao WebSocket; falha no push nunca atrapalha o despacho. Tokens que o Expo diz não existirem mais (`DeviceNotRegistered`) são apagados.
 
 Variáveis: `PUSH_MODE` (`simulated` padrão — só registra no log, **recusado em produção** — ou `expo`) e `EXPO_ACCESS_TOKEN` (opcional).
+
+## 12. Pedir entrega, pagamento e comerciante (Etapa 6)
+
+### Pagamento
+
+A AMMA **não custodia dinheiro**: o provedor de pagamento cobra e estorna; a API guarda só o estado (`Payment`) e, do cartão, bandeira + 4 últimos dígitos. O provedor é uma interface (`PaymentProvider`: `createPix`, `chargeCard`, `refund`; `refund` é idempotente por cobrança). Hoje só existe o **sandbox** (`PAYMENT_PROVIDER=sandbox`, padrão; **recusado com `NODE_ENV=production`**); nenhum provedor real foi contratado. Para ligar um real: implementar a interface, registrar em `createPaymentProvider` e apontar o webhook do provedor para `PaymentsService.confirmPix(providerRef)`.
+
+Estados: `PENDENTE → PAGO → ESTORNADO`, ou `PENDENTE → EXPIRADO` (`shared/payment.ts`).
+
+| Situação                                    | O que acontece                                                                                 |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Cartão aprovado                             | `PAGO` na criação; vai ao despacho.                                                            |
+| Pix criado                                  | `PENDENTE` (15 min). **Não** entra no despacho. Ao pagar → `PAGO` e despacha.                  |
+| Pix vence                                   | `EXPIRADO`; o pedido é cancelado com `PAGAMENTO_NAO_CONFIRMADO` (rotina periódica).            |
+| Cliente cancela antes de pagar o Pix        | `EXPIRADO` (o código deixa de valer).                                                          |
+| Pedido `CANCELADO` e pago (qualquer motivo) | **Estorno total automático** → `ESTORNADO`. Se o provedor falhar, a rotina repete a cada tick. |
+| Cobrou, mas não conseguiu gravar o pedido   | Estorna na hora (`undoCharge`); se também falhar, log `ESTORNO MANUAL NECESSÁRIO`.             |
+| Pedido `ENTREGUE`                           | **Sem estorno automático.** Ver `POST /admin/deliveries/:id/refund` e pendências.              |
+
+A janela de busca por motorista (`maxSearchSeconds`) conta do **pagamento**, não da criação: quem paga o Pix no minuto 10 não perde a busca.
+
+### Rotas do cliente (`PASSAGEIRO`/`COMERCIANTE`)
+
+| Rota                                             | Descrição                                                                                                                                                                                                                  |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /payments/config`                           | `{ provider, sandbox, methods }`. O app usa `sandbox` para mostrar os avisos e botões de teste.                                                                                                                            |
+| `POST /payments/sandbox/card-tokens`             | **Só sandbox** (`404` com provedor real). `{ number, expMonth, expYear, cvv }` → `{ token, brand, last4 }`. Faz o papel do SDK do provedor no app; confere Luhn, validade e CVV (`400`). Não guarda nem registra o número. |
+| `POST /payments/sandbox/pix/:deliveryId/confirm` | **Só sandbox.** Simula o aviso "Pix pago" do provedor. Só o dono do pedido. Idempotente. `409` se o Pix já venceu.                                                                                                         |
+| `POST /deliveries/:id/rating`                    | `{ stars: 1..5, comment?: ≤280 }` → 201 com o pedido. Só o **cliente dono**, só `ENTREGUE`, **uma vez** (`409`). O banco também confere 1–5.                                                                               |
+| `GET /deliveries/:id/receipt`                    | Recibo. Só cliente dono ou admin (`404` para os outros, inclusive o motorista). `409` até o pagamento ser confirmado.                                                                                                      |
+
+**Cartões de teste (sandbox):** qualquer número válido (Luhn) é aprovado; `4000 0000 0000 0002` → recusado ("Cartão recusado pelo banco"); `4000 0000 0000 9995` → "Saldo insuficiente"; `4000 0000 0000 0119` → provedor indisponível (`503`). Token no formato `sbx_<resultado>_<final>_<bandeira>` (ex.: `sbx_ok_4242_visa`). Pix de teste: código `PIX-SIMULADO|…`, só vira pago pela rota de confirmação acima.
+
+Recibo:
+
+```json
+{
+  "number": "AMMA-20261029-1A2B3C4D",
+  "deliveryId": "…",
+  "status": "ENTREGUE",
+  "createdAt": "…",
+  "deliveredAt": "…",
+  "pickupAddress": "…",
+  "dropoffAddress": "…",
+  "distanceMeters": 2894,
+  "durationSeconds": 417,
+  "fareCents": 1100,
+  "minimumApplied": true,
+  "pricingVersion": "…",
+  "payment": {
+    "method": "CARTAO",
+    "status": "PAGO",
+    "amountCents": 1100,
+    "cardBrand": "visa",
+    "cardLast4": "4242",
+    "paidAt": "…",
+    "refundedAt": null
+  },
+  "paidCents": 1100,
+  "refundedCents": 0,
+  "notice": "Comprovante de pagamento da entrega. Não é nota fiscal; …"
+}
+```
+
+O número é derivado do pedido (dia no fuso de João Pessoa + início do id). Estornado: `paidCents: 0` e `refundedCents` com o valor. **O recibo não é nota fiscal** e não traz telefone nem dados do motorista.
+
+### Comerciante (`COMERCIANTE`)
+
+Os pedidos usam as mesmas rotas do cliente (`POST /deliveries` etc.); o histórico é `GET /deliveries`.
+
+| Rota                                  | Descrição                                                                                                                                                                                                                                                                                          |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /merchant`                       | O estabelecimento `{ tradeName, cnpj, address, lat, lng }`, ou `null` se ainda não cadastrou.                                                                                                                                                                                                      |
+| `PUT /merchant`                       | Cria/atualiza. `tradeName` 2–80, `address` 5–200, `lat`/`lng`, `cnpj` opcional (com ou sem máscara; guardado só com dígitos). `400` CNPJ inválido, `409` CNPJ de outro estabelecimento.                                                                                                            |
+| `GET /merchant/report?days=7\|30\|90` | Relatório (padrão 30): `total`, `delivered`, `cancelled`, `inProgress`, `spentCents`, `refundedCents`, `averageTicketCents`, `cancelRatePercent`, `perDay[{date,deliveries,spentCents}]`. Dia = fuso de João Pessoa. **Gasto = só o pago e não devolvido** (Pix pendente e estornados ficam fora). |
+
+### Administrador
+
+`POST /admin/deliveries/:id/refund` `{ reason }` (5–280) → 200 `{ status, refundedAt }`. Repete o estorno de um pedido **cancelado** cujo estorno automático falhou. `409` se o pedido está em andamento, já estornado ou **já entregue**: devolver o dinheiro de uma entrega concluída exigiria reverter o repasse do motorista no ledger, e a regra de disputa ainda não foi definida.
+
+### Migração
+
+`20261030120000_payments_merchant_rating`: `Payment`, `Merchant`, `Rating`, `Delivery.idempotencyKey` (único por cliente), valor `PAGAMENTO_NAO_CONFIRMADO` em `CancelReason`, e `CHECK` no banco (`Rating.stars` 1–5; `Payment.amountCents > 0`).

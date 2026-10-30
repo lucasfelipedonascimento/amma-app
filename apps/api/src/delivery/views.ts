@@ -1,12 +1,19 @@
 import { calculateRideFees, type AssociationRate } from '@amma/shared';
-import type { Delivery, DeliveryOffer } from '@prisma/client';
+import type { Delivery, DeliveryOffer, Payment, Rating } from '@prisma/client';
+import { paymentView } from '../payments/payments.service';
+import type { PaymentProvider } from '../payments/payment-provider';
 
 export type Viewer = 'CLIENTE' | 'MOTORISTA' | 'ADMIN';
 
 /** O que cada papel enxerga de um pedido. Contato/telefone nunca sai daqui (minimização, LGPD). */
 export function deliveryView(
-  d: Delivery & { worker?: { name: string | null } | null },
+  d: Delivery & {
+    worker?: { name: string | null } | null;
+    payment?: Payment | null;
+    rating?: Rating | null;
+  },
   viewer: Viewer,
+  provider?: PaymentProvider,
 ) {
   const settled = d.status === 'ENTREGUE';
   return {
@@ -30,6 +37,13 @@ export function deliveryView(
       viewer === 'MOTORISTA' || !d.workerId
         ? null
         : { id: d.workerId, name: d.worker?.name ?? null },
+    // Pagamento e avaliação são do cliente (e do admin); o motorista não vê.
+    payment:
+      viewer !== 'MOTORISTA' && d.payment && provider ? paymentView(d.payment, provider) : null,
+    rating:
+      viewer !== 'MOTORISTA' && d.rating
+        ? { stars: d.rating.stars, comment: d.rating.comment, at: d.rating.createdAt }
+        : null,
     // Repasse mostrado ao motorista e ao admin; o cliente só vê o valor do pedido.
     settlement:
       settled && viewer !== 'CLIENTE'

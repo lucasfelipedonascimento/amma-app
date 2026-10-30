@@ -3,11 +3,13 @@ import {
   CANCEL_REASONS,
   DECLINE_REASONS,
   DELIVERY_STATUSES,
+  RATING_COMMENT_MAX,
   type CancelReason,
   type DeclineReason,
   type DeliveryStatus,
 } from '@amma/shared';
 import { Type } from 'class-transformer';
+import { PaymentChoiceDto } from '../payments/dto';
 import {
   IsDateString,
   IsDefined,
@@ -48,10 +50,27 @@ export class PlaceDto extends LatLngDto {
   @IsString() @MinLength(3) @MaxLength(200) address!: string;
 }
 
-export class CreateDeliveryDto {
+export class QuoteDto {
   @IsDefined() @ValidateNested() @Type(() => PlaceDto) pickup!: PlaceDto;
   @IsDefined() @ValidateNested() @Type(() => PlaceDto) dropoff!: PlaceDto;
   @IsOptional() @IsString() @MaxLength(280) notes?: string;
+}
+
+export class CreateDeliveryDto extends QuoteDto {
+  @IsDefined() @ValidateNested() @Type(() => PaymentChoiceDto) payment!: PaymentChoiceDto;
+  /** O app gera um por tentativa de pedir; repetir (duplo toque, rede instável) não cria outro pedido nem cobra de novo. */
+  @IsOptional() @IsString() @Matches(/^[\w-]{8,64}$/) idempotencyKey?: string;
+  /** Preço que o cliente viu na cotação. Se a tabela mudou desde então, o pedido é recusado (409) antes de cobrar. */
+  @IsOptional() @IsInt() @Min(1) expectedFareCents?: number;
+}
+
+export class RatingDto {
+  @IsInt() @Min(1) @Max(5) stars!: number;
+  @IsOptional() @IsString() @MaxLength(RATING_COMMENT_MAX) comment?: string;
+}
+
+export class RefundDto {
+  @IsString() @MinLength(5) @MaxLength(280) reason!: string;
 }
 
 export class CancelDto {

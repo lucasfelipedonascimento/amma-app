@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RedisService } from '../common/redis.service';
+import { PaymentsService } from '../payments/payments.service';
 import { DispatchService } from './dispatch.service';
 
 /**
@@ -19,6 +20,7 @@ export class DispatchScheduler implements OnModuleInit, OnModuleDestroy {
     config: ConfigService,
     private readonly dispatch: DispatchService,
     private readonly redis: RedisService,
+    private readonly payments: PaymentsService,
   ) {
     this.everyMs = Number(config.get('DISPATCH_TICK_MS') ?? 3000);
   }
@@ -39,7 +41,10 @@ export class DispatchScheduler implements OnModuleInit, OnModuleDestroy {
       const lock = await this.redis
         .set('lock:dispatch-tick', '1', 'PX', Math.max(this.everyMs - 100, 500), 'NX')
         .catch(() => 'OK');
-      if (lock === 'OK') await this.dispatch.tick();
+      if (lock === 'OK') {
+        await this.dispatch.tick();
+        await this.payments.tick();
+      }
     } catch (e) {
       this.logger.error((e as Error).message);
     } finally {

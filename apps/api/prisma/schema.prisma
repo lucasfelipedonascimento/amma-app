@@ -74,6 +74,7 @@ enum CancelReason {
   COLETA_IMPOSSIVEL
   ENTREGA_IMPOSSIVEL
   ADMIN_CANCELOU
+  PAGAMENTO_NAO_CONFIRMADO
 }
 
 enum OfferStatus {
@@ -92,6 +93,19 @@ enum DeliveryEventType {
   EXPIRACAO
   DESISTENCIA // motorista liberou o pedido depois de aceitar
   SEM_CANDIDATOS
+}
+
+enum PaymentMethod {
+  PIX
+  CARTAO
+}
+
+// Deve ficar idêntico a PAYMENT_STATUSES em packages/shared (há teste que confere).
+enum PaymentStatus {
+  PENDENTE
+  PAGO
+  EXPIRADO
+  ESTORNADO
 }
 
 enum LedgerKind {
@@ -131,6 +145,9 @@ model User {
   deliveriesAsWorker Delivery[]      @relation("DeliveryWorker")
   deliveryOffers     DeliveryOffer[]
   pushTokens         PushToken[]
+  merchant           Merchant?
+  ratingsGiven       Rating[]        @relation("RatingAuthor")
+  ratingsReceived    Rating[]        @relation("RatingDriver")
 }
 
 // Código de uso único enviado por SMS. Só o hash é guardado.
@@ -311,6 +328,8 @@ model Delivery {
   dropoffLng     Float
   dropoffAddress String
   notes          String?
+  // Chave enviada pelo app a cada tentativa de pedir: repetir (duplo toque) devolve o mesmo pedido.
+  idempotencyKey String?
 
   // Cotação feita na criação (rota do provedor + tabela de preço vigente).
   distanceMeters  Int
@@ -338,9 +357,12 @@ model Delivery {
 
   client User            @relation("DeliveryClient", fields: [clientId], references: [id])
   worker User?           @relation("DeliveryWorker", fields: [workerId], references: [id])
-  offers DeliveryOffer[]
-  events DeliveryEvent[]
+  offers  DeliveryOffer[]
+  events  DeliveryEvent[]
+  payment Payment?
+  rating  Rating?
 
+  @@unique([clientId, idempotencyKey])
   @@index([clientId, createdAt])
   @@index([workerId, status])
   @@index([status])
@@ -448,4 +470,65 @@ model PushToken {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Etapa 6: pagamento, comerciante e avaliação
+// ---------------------------------------------------------------------------
+
+// Pagamento do pedido (um por pedido). O dinheiro fica com o parceiro regulado; aqui só o estado.
+// Nunca guarda número de cartão: só bandeira e 4 últimos dígitos, para o recibo.
+model Payment {
+  id           String        @id @default(uuid())
+  deliveryId   String        @unique
+  method       PaymentMethod
+  status       PaymentStatus @default(PENDENTE)
+  amountCents  Int
+  // Qual provedor processou ("sandbox" em desenvolvimento) e o identificador dele para esta cobrança.
+  provider     String
+  providerRef  String        @unique
+  // Pix: código "copia e cola" e prazo para pagar.
+  pixCode      String?
+  pixExpiresAt DateTime?     @db.Timestamptz(3)
+  cardBrand    String?
+  cardLast4    String?
+  paidAt       DateTime?     @db.Timestamptz(3)
+  refundedAt   DateTime?     @db.Timestamptz(3)
+  refundRef    String?
+  refundReason String?
+  createdAt    DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime      @updatedAt @db.Timestamptz(3)
+  delivery     Delivery      @relation(fields: [deliveryId], references: [id])
+
+  @@index([status, pixExpiresAt])
+}
+
+// Estabelecimento do comerciante. O endereço é o ponto de coleta padrão dos pedidos dele.
+model Merchant {
+  userId    String   @id
+  tradeName String
+  // CNPJ só com dígitos; opcional (MEI/informal pode cadastrar sem).
+  cnpj      String?  @unique
+  address   String
+  lat       Float
+  lng       Float
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Avaliação do cliente sobre a entrega (1 a 5; o banco confere). Uma por pedido.
+model Rating {
+  id         String   @id @default(uuid())
+  deliveryId String   @unique
+  authorId   String
+  driverId   String
+  stars      Int
+  comment    String?
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+  delivery   Delivery @relation(fields: [deliveryId], references: [id])
+  author     User     @relation("RatingAuthor", fields: [authorId], references: [id])
+  driver     User     @relation("RatingDriver", fields: [driverId], references: [id])
+
+  @@index([driverId])
 }

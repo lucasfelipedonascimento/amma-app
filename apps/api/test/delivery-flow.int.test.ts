@@ -5,7 +5,7 @@ import {
   workerQuotasAccount,
 } from '@amma/shared';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { DROPOFF, PICKUP, TestApp, near, type TestUser } from './helpers';
+import { CARD_OK, DROPOFF, PICKUP, TestApp, near, type TestUser } from './helpers';
 
 describe('fluxo completo do pedido de entrega', () => {
   let t: TestApp;
@@ -41,6 +41,7 @@ describe('fluxo completo do pedido de entrega', () => {
       pickup: PICKUP,
       dropoff: DROPOFF,
       notes: 'Frágil',
+      payment: CARD_OK,
     });
     expect(created.status).toBe(201);
     expect(created.body).toMatchObject({ status: 'OFERECIDO', fareCents: 1100, notes: 'Frágil' });
@@ -190,10 +191,22 @@ describe('fluxo completo do pedido de entrega', () => {
   describe('autorização', () => {
     it('exige login e papel certo', async () => {
       expect(
-        (await t.post('/deliveries', undefined, { pickup: PICKUP, dropoff: DROPOFF })).status,
+        (
+          await t.post('/deliveries', undefined, {
+            pickup: PICKUP,
+            dropoff: DROPOFF,
+            payment: CARD_OK,
+          })
+        ).status,
       ).toBe(401);
       expect(
-        (await t.post('/deliveries', driver.token, { pickup: PICKUP, dropoff: DROPOFF })).status,
+        (
+          await t.post('/deliveries', driver.token, {
+            pickup: PICKUP,
+            dropoff: DROPOFF,
+            payment: CARD_OK,
+          })
+        ).status,
       ).toBe(403);
       expect((await t.get('/driver/wallet', client.token)).status).toBe(403);
       expect((await t.get('/admin/dispatch-settings', client.token)).status).toBe(403);
@@ -229,7 +242,8 @@ describe('fluxo completo do pedido de entrega', () => {
 
   describe('validação', () => {
     it('rejeita coordenadas inválidas, campos extras e coleta = entrega', async () => {
-      const bad = (body: unknown) => t.post('/deliveries', client.token, body);
+      const bad = (body: Record<string, unknown>) =>
+        t.post('/deliveries', client.token, { payment: CARD_OK, ...body });
       expect((await bad({ pickup: { ...PICKUP, lat: 91 }, dropoff: DROPOFF })).status).toBe(400);
       expect((await bad({ pickup: PICKUP, dropoff: DROPOFF, workerId: 'x' })).status).toBe(400);
       expect((await bad({ pickup: PICKUP })).status).toBe(400);

@@ -4,7 +4,8 @@
 // Uso: node scripts/demo-delivery.mjs <LATITUDE> <LONGITUDE> [URL_DA_API]
 //   ex.: node scripts/demo-delivery.mjs -7.1195 -34.8450 http://192.168.0.10:3000
 // A coleta fica ~300 m ao norte do ponto informado e a entrega ~2 km ao norte (use a posição do celular).
-// Só funciona com OTP_MODE=simulated (o código vem na resposta) e o seed aplicado.
+// Só funciona com OTP_MODE=simulated (o código vem na resposta), PAYMENT_PROVIDER=sandbox e o seed aplicado.
+// Paga com o cartão de teste aprovado (4242…), que só existe no provedor simulado.
 
 const [lat, lng, api = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000'] =
   process.argv.slice(2);
@@ -50,6 +51,7 @@ const delivery = await call(
       address: 'Entrega de teste (~2 km ao norte)',
     },
     notes: 'Pedido de teste',
+    payment: { method: 'CARTAO', cardToken: 'sbx_ok_4242_visa' },
   },
   accessToken,
 );

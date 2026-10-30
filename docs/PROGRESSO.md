@@ -195,3 +195,44 @@ Celular real: **`docs/MOBILE.md`** (build de desenvolvimento, chaves, roteiro de
 - Sem fonte Outfit, sem ícone/splash, sem acessibilidade revisada em leitor de tela, sem tema escuro.
 - Telas de cliente/comerciante, painel admin, push para o cliente e multa/ressarcimento seguem pendentes (Etapa 4).
 - Ganhos mostram o que está no ledger/pedido; o saque/repasse ao parceiro regulado ainda não existe.
+
+## Etapa 6 — Pedir entrega (cliente e comerciante) ✅ (sem teste em celular real)
+
+**Feito** (detalhes em `docs/API.md` seção 12, `docs/REGRAS_FINANCEIRAS.md` seção 6 e `docs/MOBILE.md` roteiro F)
+
+- **Cliente:** informa coleta, entrega e descrição → vê o **preço antes de confirmar** (com mapa) → escolhe Pix ou cartão → acompanha em tempo real (etapas, motorista no mapa, pagamento) → pode cancelar até a coleta → **avalia** (1–5) → vê o **recibo** e o **histórico**.
+- **Comerciante:** cadastra o estabelecimento (nome, CNPJ opcional validado, endereço; vira a coleta padrão), cria entregas pelo mesmo fluxo, histórico e **relatório simples** (7/30/90 dias: gasto, pedidos, cancelados, médio, estornado, gasto por dia).
+- **Pagamento por interface** (`PaymentProvider`) com **provedor simulado**: cartão (aprovado/recusado/saldo/indisponível por cartões de teste) e Pix (código de mentira, “pago” só por uma rota de teste, 15 min de prazo). Estados `PENDENTE → PAGO → ESTORNADO` ou `EXPIRADO`.
+- **Estorno:** automático e total em qualquer cancelamento (inclusive “sem motorista”); a rotina repete se o provedor falhar; estorno é idempotente. Pix não pago cancela o pedido.
+- **Despacho** só começa com o pagamento confirmado; a janela de busca conta do pagamento.
+- **Segurança do dinheiro:** número de cartão nunca chega à API/banco (token); `idempotencyKey` (duplo toque não cobra duas vezes); `expectedFareCents` (cliente paga o que viu); cobrança sem pedido gravado é estornada na hora.
+- **shared:** `payment.ts`, `receipt.ts`, `merchant.ts`, `rating.ts` + motivo de cancelamento `PAGAMENTO_NAO_CONFIRMADO`.
+- **API:** módulos `payments/` e `merchant/`; migração `payments_merchant_rating` (com `CHECK` de nota 1–5 e valor > 0).
+- **App:** `apps/mobile/src/client` (abas Pedir / Pedidos / Loja / Relatório / Conta), mesma identidade visual e componentes do app do motorista.
+- **Testes:** shared 133 (+24), api 47 unitários (+9) e **89 de integração** (+35: cartão, Pix, vencimento, estorno, idempotência, recibo, avaliação, comerciante, exclusão de conta), **mobile 150** (+53). Fluxo conferido ponta a ponta contra a API real (Pix → pago → recibo → cancelar → estornado).
+
+**Como rodar**
+
+```
+pnpm install && pnpm db:up
+cd apps/api && pnpm prisma:deploy && pnpm db:seed && cd ../..     # migração nova: payments_merchant_rating
+pnpm build && pnpm test && pnpm lint && pnpm typecheck
+pnpm --filter @amma/api test:int
+pnpm --filter @amma/mobile test
+```
+
+Para ver o fluxo no celular: `docs/MOBILE.md` roteiro F. Nenhuma variável nova é obrigatória (`PAYMENT_PROVIDER=sandbox` é o padrão).
+
+**Falta / pendências**
+
+- **Não há provedor de pagamento real.** Precisa contratar um parceiro regulado (Pix + cartão), implementar `PaymentProvider`, ligar o **webhook** a `PaymentsService.confirmPix` e trocar a tokenização do sandbox pelo **SDK do provedor** no app (hoje o app manda o cartão de teste à rota `/payments/sandbox/card-tokens`; com `sandbox=false` o cartão fica indisponível de propósito). Pix pago **depois** de vencer hoje só devolve 409 no sandbox; com provedor real é preciso estornar esse pagamento tardio.
+- **Estorno de entrega concluída** (disputa) não existe: exige estorno persistido no ledger e decidir o que acontece com o repasse do motorista.
+- **Multa/ressarcimento de cancelamento:** o cliente é sempre estornado por inteiro; o motorista que já se deslocou não recebe nada. Regra a definir com a associação.
+- **Nota fiscal:** o recibo diz que não é nota fiscal. Se o comerciante precisar de documento fiscal, é outra frente (contador/parceiro).
+- **Endereço:** usa o geocodificador do aparelho; sem autocomplete, sem escolher entre resultados, sem ajustar o pino no mapa. Endereço ambíguo pode cair no lugar errado (o mapa de confirmação existe para o cliente perceber). Para algo melhor: Mapbox/Google Places no servidor.
+- **Avaliação:** só o cliente avalia o motorista; não há média exibida ao motorista, avaliação do motorista sobre o cliente, nem uso da nota no despacho (decisão de produto).
+- **Push para o cliente** (pedido aceito, a caminho, entregue) não existe; o cliente depende do app aberto + tempo real/consulta. `PushToken` hoje é só do motorista.
+- Nada foi testado em **aparelho físico** (mapa real, geocodificação do Android, “usar minha localização”, compartilhar código/recibo). Roteiro F em `docs/MOBILE.md`.
+- Relatório do comerciante é só em tela (sem exportar CSV/PDF). Um usuário COMERCIANTE + PASSAGEIRO vê o mesmo histórico (é a mesma conta).
+- A rotina de Pix vencido/estorno roda no mesmo `tick` do despacho (`DISPATCH_TICK_MS`); com `0` (só testes) ela não roda sozinha.
+- Mesmas pendências da Etapa 5 sobre fonte Outfit, ícone/splash, leitor de tela e tema escuro; `Field` agora tem `accessibilityLabel`, mas o resto da acessibilidade não foi revisado.

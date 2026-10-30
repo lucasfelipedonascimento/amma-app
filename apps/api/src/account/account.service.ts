@@ -75,6 +75,9 @@ export class AccountService {
         data: { status: 'CANCELADA', respondedAt: new Date() },
       }),
       this.prisma.pushToken.deleteMany({ where: { userId } }),
+      // Endereço do estabelecimento e textos livres das avaliações são dados pessoais; o resto (valores) fica.
+      this.prisma.merchant.deleteMany({ where: { userId } }),
+      this.prisma.rating.updateMany({ where: { authorId: userId }, data: { comment: null } }),
       this.prisma.driverPresence.deleteMany({ where: { userId } }),
       this.prisma.document.deleteMany({ where: { userId } }),
       this.prisma.vehicle.deleteMany({ where: { userId } }),

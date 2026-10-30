@@ -9,6 +9,8 @@ import { DeliveryModule } from './delivery/delivery.module';
 import { DriverController } from './driver/driver.controller';
 import { DriverService } from './driver/driver.service';
 import { LegalController } from './legal/legal.controller';
+import { MerchantController } from './merchant/merchant.controller';
+import { MerchantService } from './merchant/merchant.service';
 
 @Module({
   imports: [
@@ -22,7 +24,8 @@ import { LegalController } from './legal/legal.controller';
     DriverController,
     AdminController,
     LegalController,
+    MerchantController,
   ],
-  providers: [AccountService, DriverService],
+  providers: [AccountService, DriverService, MerchantService],
 })
 export class AppModule {}

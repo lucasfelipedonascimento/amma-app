@@ -4,6 +4,7 @@ import { ActivityIndicator, View } from 'react-native';
 import { api } from './src/api';
 import { ApprovalScreen, DriverStatus } from './src/screens/ApprovalScreen';
 import { DocumentsScreen } from './src/screens/DocumentsScreen';
+import { ClientApp } from './src/client/ClientApp';
 import { DriverApp } from './src/driver/DriverApp';
 import { DriverProfileScreen } from './src/screens/DriverProfileScreen';
 import { HomeScreen } from './src/screens/HomeScreen';
@@ -82,6 +83,8 @@ function Root() {
     }
     return <DriverApp />;
   }
+  // Passageiro/cliente e comerciante pedem entregas; quem só é admin segue na tela simples.
+  if (me.roles.some((r) => r === 'PASSAGEIRO' || r === 'COMERCIANTE')) return <ClientApp />;
   return <HomeScreen />;
 }
 

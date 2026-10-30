@@ -59,6 +59,7 @@ export const CANCEL_REASONS = [
   'COLETA_IMPOSSIVEL',
   'ENTREGA_IMPOSSIVEL',
   'ADMIN_CANCELOU',
+  'PAGAMENTO_NAO_CONFIRMADO',
 ] as const;
 export type CancelReason = (typeof CANCEL_REASONS)[number];
 
@@ -92,6 +93,11 @@ export const CANCEL_RULES: Record<CancelReason, CancelRule> = {
     actor: 'MOTORISTA',
     from: ['COLETADO', 'A_CAMINHO_ENTREGA'],
     description: 'O motorista não conseguiu entregar (ex.: destinatário ausente).',
+  },
+  PAGAMENTO_NAO_CONFIRMADO: {
+    actor: 'SISTEMA',
+    from: ['CRIADO'],
+    description: 'O Pix não foi pago dentro do prazo.',
   },
   ADMIN_CANCELOU: {
     actor: 'ADMIN',

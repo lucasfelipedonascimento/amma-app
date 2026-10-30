@@ -10,6 +10,8 @@ import { RedisService } from '../src/common/redis.service';
 // Pontos de João Pessoa. 0,001° de latitude ≈ 111 m.
 export const PICKUP = { lat: -7.115, lng: -34.861, address: 'Rua da Coleta, 100' };
 export const DROPOFF = { lat: -7.095, lng: -34.861, address: 'Rua da Entrega, 200' };
+/** Cartão de teste aprovado (token do provedor sandbox). */
+export const CARD_OK = { method: 'CARTAO', cardToken: 'sbx_ok_4242_visa' } as const;
 export const near = (meters: number) => ({ lat: PICKUP.lat + meters / 111_000, lng: PICKUP.lng });
 
 export interface Res<T = any> {
@@ -89,6 +91,7 @@ export class TestApp {
   get = (path: string, token?: string) => this.req('GET', path, token);
   post = (path: string, token?: string, body?: unknown) =>
     this.req('POST', path, token, body ?? {});
+  request = (method: string, path: string, token?: string) => this.req(method, path, token);
   put = (path: string, token?: string, body?: unknown) => this.req('PUT', path, token, body);
 
   /** Login real por OTP simulado; depois define os papéis direto no banco. */
@@ -150,7 +153,11 @@ export class TestApp {
   }
 
   async createDelivery(client: TestUser) {
-    const r = await this.post('/deliveries', client.token, { pickup: PICKUP, dropoff: DROPOFF });
+    const r = await this.post('/deliveries', client.token, {
+      pickup: PICKUP,
+      dropoff: DROPOFF,
+      payment: CARD_OK,
+    });
     if (r.status !== 201) throw new Error(`criar falhou: ${r.status} ${JSON.stringify(r.body)}`);
     return r.body;
   }
