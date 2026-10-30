@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import type { PanelRole } from '@amma/shared';
 import { AllowBlocked, AuthGuard, AuthUser } from '../auth/auth.guard';
+import { Reauth } from '../auth/reauth';
 import { Roles, RolesGuard } from '../auth/roles';
 import { AssemblyService } from '../association/assembly.service';
 import { GroupPurchaseService } from '../association/group-purchase.service';
@@ -146,6 +147,7 @@ export class BackofficeController {
     return this.directory.merchants(q.status);
   }
 
+  @Reauth()
   @Post('merchants/:id/review')
   @HttpCode(200)
   reviewMerchant(@Req() req: Req_, @Param('id', uuid) id: string, @Body() dto: MerchantReviewDto) {
@@ -157,6 +159,7 @@ export class BackofficeController {
     return this.directory.users(q.q, q.blocked === undefined ? undefined : q.blocked === 'true');
   }
 
+  @Reauth()
   @Post('users/:id/block')
   block(@Req() req: Req_, @Param('id', uuid) id: string, @Body() dto: ReasonDto) {
     return this.blocks.block(req.user.id, id, dto.reason);
@@ -167,12 +170,14 @@ export class BackofficeController {
     return this.blocks.list(q.status, q.userId);
   }
 
+  @Reauth()
   @Post('blocks/:id/revoke')
   @HttpCode(200)
   revoke(@Req() req: Req_, @Param('id', uuid) id: string, @Body() dto: ReasonDto) {
     return this.blocks.revoke(req.user.id, id, dto.reason);
   }
 
+  @Reauth()
   @Post('blocks/:id/appeal-decision')
   @HttpCode(200)
   decideAppeal(@Req() req: Req_, @Param('id', uuid) id: string, @Body() dto: AppealDecisionDto) {
@@ -196,11 +201,13 @@ export class BackofficeController {
     return this.audit.actions();
   }
 
+  @Reauth()
   @Post('budget/entries')
   createEntry(@Req() req: Req_, @Body() dto: BudgetEntryDto) {
     return this.budget.create(req.user.id, dto);
   }
 
+  @Reauth()
   @Post('budget/entries/:id/reverse')
   @HttpCode(200)
   reverseEntry(@Req() req: Req_, @Param('id', uuid) id: string, @Body() dto: ReasonDto) {

@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { AuthGuard, AuthUser } from '../auth/auth.guard';
+import { UserRateLimit } from '../common/rate-limit';
 import { Roles, RolesGuard } from '../auth/roles';
 import { DriverProfileDto, GenderDto, UploadDocumentDto, VehicleDto } from './dto';
 import { DriverService, MAX_UPLOAD_BYTES } from './driver.service';
@@ -42,6 +43,7 @@ export class DriverController {
     return this.driver.listVehicles(req.user.id);
   }
 
+  @UserRateLimit(20, 3600)
   @Post('documents')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 } }))
   upload(

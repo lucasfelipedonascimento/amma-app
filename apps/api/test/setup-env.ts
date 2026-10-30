@@ -15,3 +15,5 @@ process.env.DISPATCH_TICK_MS = '0';
 process.env.UPLOAD_DIR = mkdtempSync(join(tmpdir(), 'amma-test-'));
 // Fechamento de votações só quando o teste chama (ou ao ler a proposta).
 process.env.ASSOCIATION_TICK_MS = '0';
+// Os testes fazem dezenas de logins do mesmo IP: limites de taxa folgados (o teste de limite os restaura).
+process.env.RATE_LIMIT_SCALE = '1000';

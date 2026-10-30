@@ -16,6 +16,7 @@ import {
 } from '@nestjs/common';
 import { IsIn, IsOptional, IsString } from 'class-validator';
 import { AuthGuard, AuthUser } from '../auth/auth.guard';
+import { Reauth } from '../auth/reauth';
 import { Roles, RolesGuard } from '../auth/roles';
 import { StorageService } from '../common/storage.service';
 import { PrismaService } from '../prisma.service';
@@ -61,6 +62,7 @@ export class AdminController {
     return new StreamableFile(await this.storage.read(doc.storageKey), { type: doc.mimeType });
   }
 
+  @Reauth()
   @Post('documents/:id/review')
   @HttpCode(200)
   async review(

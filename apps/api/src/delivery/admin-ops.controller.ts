@@ -11,6 +11,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { AuthGuard, AuthUser } from '../auth/auth.guard';
+import { Reauth } from '../auth/reauth';
 import { Roles, RolesGuard } from '../auth/roles';
 import { DispatchSettingsService } from '../dispatch/dispatch-settings.service';
 import { PricingService } from '../pricing/pricing.service';
@@ -33,6 +34,7 @@ export class AdminOpsController {
     return this.settings.get();
   }
 
+  @Reauth()
   @Put('dispatch-settings')
   putSettings(@Req() req: { user: AuthUser }, @Body() dto: DispatchSettingsDto) {
     return this.settings.update({ ...dto }, req.user.id);
@@ -43,6 +45,7 @@ export class AdminOpsController {
     return this.pricing.list();
   }
 
+  @Reauth()
   @Post('pricing')
   createPricing(@Req() req: { user: AuthUser }, @Body() dto: PricingDto) {
     const { profile, ...table } = dto;
@@ -58,6 +61,7 @@ export class AdminOpsController {
     return this.deliveries.events(id);
   }
 
+  @Reauth()
   @Post('deliveries/:id/refund')
   @HttpCode(200)
   refund(@Param('id', ParseUUIDPipe) id: string, @Body() dto: RefundDto) {

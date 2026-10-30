@@ -6,6 +6,10 @@ export const OTP_MAX_ATTEMPTS = 5;
 /** No máximo 3 códigos por telefone a cada 10 minutos. */
 export const OTP_MAX_REQUESTS = 3;
 export const OTP_REQUEST_WINDOW_MS = 10 * 60 * 1000;
+/** Teto diário de SMS por telefone (custo e abuso). */
+export const OTP_MAX_REQUESTS_PER_DAY = 10;
+/** Erros de código por telefone em 1 hora, somando todos os códigos (trava o chute de 6 dígitos). */
+export const OTP_MAX_FAILED_PER_HOUR = 20;
 
 export const generateOtpCode = (): string => String(randomInt(0, 1_000_000)).padStart(6, '0');
 

@@ -17,6 +17,8 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { AuthGuard, AuthUser } from '../auth/auth.guard';
+import { UserRateLimit } from '../common/rate-limit';
+import { Reauth } from '../auth/reauth';
 import { Roles, RolesGuard } from '../auth/roles';
 import { MAX_UPLOAD_BYTES } from '../driver/driver.service';
 import { AssemblyService } from './assembly.service';
@@ -140,6 +142,7 @@ export class AssociationController {
     return this.insurance.getMine(req.user.id, id);
   }
 
+  @UserRateLimit(20, 3600)
   @Post('insurance/claims/:id/attachments')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 } }))
   attach(
@@ -181,6 +184,7 @@ export class AdminAssociationController {
     private readonly rules: PurchaseRulesService,
   ) {}
 
+  @Reauth()
   @Post('assembly/proposals')
   createProposal(@Req() req: Req_, @Body() dto: CreateProposalDto) {
     return this.assembly.createProposal(req.user.id, dto);
@@ -196,17 +200,20 @@ export class AdminAssociationController {
     return this.rules.history();
   }
 
+  @Reauth()
   @Post('purchase-groups')
   createGroup(@Req() req: Req_, @Body() dto: CreateGroupDto) {
     return this.groups.createGroup(req.user.id, dto);
   }
 
+  @Reauth()
   @Post('purchase-groups/:id/award')
   @HttpCode(200)
   award(@Req() req: Req_, @Param('id', ParseUUIDPipe) id: string) {
     return this.groups.award(req.user.id, id);
   }
 
+  @Reauth()
   @Post('purchase-groups/:id/close')
   @HttpCode(200)
   closeGroup(@Param('id', ParseUUIDPipe) id: string) {
@@ -234,12 +241,14 @@ export class AdminAssociationController {
     return new StreamableFile(f.data, { type: f.mimeType });
   }
 
+  @Reauth()
   @Post('insurance/claims/:id/review')
   @HttpCode(200)
   review(@Req() req: Req_, @Param('id', ParseUUIDPipe) id: string) {
     return this.insurance.startReview(req.user.id, id);
   }
 
+  @Reauth()
   @Post('insurance/claims/:id/decision')
   @HttpCode(200)
   decide(@Req() req: Req_, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ClaimDecisionDto) {
@@ -252,6 +261,7 @@ export class AdminAssociationController {
     return this.surplus.simulate(dto);
   }
 
+  @Reauth()
   @Post('surplus/close')
   @HttpCode(200)
   closeSurplus(@Req() req: Req_, @Body() dto: SurplusCloseDto) {

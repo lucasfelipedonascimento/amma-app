@@ -1,7 +1,7 @@
 import { apiErrorMessage } from './form';
 
 export type CallResult<T = unknown> =
-  { ok: true; data: T } | { ok: false; error: string; status: number };
+  { ok: true; data: T } | { ok: false; error: string; status: number; code?: string };
 
 /** Chamada do navegador à API, pelo proxy do painel (o token fica no cookie httpOnly). */
 export async function callApi<T = unknown>(
@@ -19,7 +19,12 @@ export async function callApi<T = unknown>(
     const data = text ? JSON.parse(text) : null;
     if (!res.ok) {
       if (res.status === 401) window.location.href = '/login';
-      return { ok: false, status: res.status, error: apiErrorMessage(data, res.status) };
+      return {
+        ok: false,
+        status: res.status,
+        error: apiErrorMessage(data, res.status),
+        code: typeof data?.code === 'string' ? data.code : undefined,
+      };
     }
     return { ok: true, data: data as T };
   } catch {

@@ -18,6 +18,8 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { AuthGuard, AuthUser } from '../auth/auth.guard';
+import { UserRateLimit } from '../common/rate-limit';
+import { Reauth } from '../auth/reauth';
 import { Roles, RolesGuard } from '../auth/roles';
 import { MAX_UPLOAD_BYTES } from '../driver/driver.service';
 import { CheckInService } from './checkin.service';
@@ -130,6 +132,7 @@ export class WelcomeController {
     await this.points.removeOwn(viewer(req), id);
   }
 
+  @UserRateLimit(20, 3600)
   @Post(':id/photos')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_UPLOAD_BYTES + 1 } }))
   addPhoto(
@@ -195,24 +198,28 @@ export class AdminWelcomeController {
     return this.moderation.getPoint(id);
   }
 
+  @Reauth()
   @Post('welcome-points/:id/approve')
   @HttpCode(200)
   approve(@Req() req: Req_, @Param('id', uuid) id: string, @Body() dto: ApprovePointDto) {
     return this.moderation.approve(viewer(req), id, dto);
   }
 
+  @Reauth()
   @Post('welcome-points/:id/refuse')
   @HttpCode(200)
   refuse(@Req() req: Req_, @Param('id', uuid) id: string, @Body() dto: PointNoteDto) {
     return this.moderation.refuse(viewer(req), id, dto.note.trim());
   }
 
+  @Reauth()
   @Post('welcome-points/:id/remove')
   @HttpCode(200)
   remove(@Req() req: Req_, @Param('id', uuid) id: string, @Body() dto: PointNoteDto) {
     return this.moderation.remove(viewer(req), id, dto.note.trim());
   }
 
+  @Reauth()
   @Post('welcome-points/:id/reinstate')
   @HttpCode(200)
   reinstate(@Req() req: Req_, @Param('id', uuid) id: string, @Body() dto: PointNoteDto) {
@@ -224,6 +231,7 @@ export class AdminWelcomeController {
     return this.moderation.listReports(q.status);
   }
 
+  @Reauth()
   @Post('welcome-reports/:id/resolve')
   @HttpCode(200)
   resolve(@Req() req: Req_, @Param('id', uuid) id: string, @Body() dto: ResolveReportDto) {

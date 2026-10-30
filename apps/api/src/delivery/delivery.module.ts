@@ -3,7 +3,6 @@ import { createPushSender, PUSH_SENDER, PushService } from '../push/push.service
 import { DriverAppService } from './driver-app.service';
 import { createRouteProvider, ROUTE_PROVIDER } from '../routing/route-provider';
 import { ConfigService } from '@nestjs/config';
-import { RedisService } from '../common/redis.service';
 import { DispatchController } from '../dispatch/dispatch.controller';
 import { DispatchScheduler } from '../dispatch/dispatch.scheduler';
 import { DispatchService } from '../dispatch/dispatch.service';
@@ -49,7 +48,6 @@ import { DriverOpsController } from './driver-ops.controller';
     AdminSafetyController,
   ],
   providers: [
-    RedisService,
     PositionStore,
     PresenceService,
     RealtimeService,

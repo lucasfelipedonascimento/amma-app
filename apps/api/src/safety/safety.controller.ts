@@ -20,6 +20,9 @@ import {
   type ReportStatus,
 } from '@amma/shared';
 import { AuthGuard, AuthUser } from '../auth/auth.guard';
+import { Reauth } from '../auth/reauth';
+import { Public } from '../auth/public';
+import { RateLimit } from '../common/rate-limit';
 import { Roles, RolesGuard } from '../auth/roles';
 import {
   EmergencyDto,
@@ -66,6 +69,7 @@ export class SafetyController {
 }
 
 /** Página pública do contato que recebeu o link da viagem. Sem login: o segredo é o token do link. */
+@Public()
 @Controller('share')
 export class ShareController {
   constructor(private readonly safety: SafetyService) {}
@@ -84,6 +88,7 @@ export class ShareController {
     return SAFETY_PAGE;
   }
 
+  @RateLimit(30, 60)
   @Get(':token/data')
   @Header('Cache-Control', 'no-store')
   @Header('Referrer-Policy', 'no-referrer')
@@ -136,6 +141,7 @@ export class AdminSafetyController {
     return this.safety.adminRecord(req.user.id, id);
   }
 
+  @Reauth()
   @Post('drivers/:id/gender-verification')
   @HttpCode(200)
   verifyGender(
@@ -156,6 +162,7 @@ export class AdminSafetyController {
     return this.municipal.current();
   }
 
+  @Reauth()
   @Post('municipal-rules')
   publishRules(@Req() req: Req_, @Body() dto: MunicipalRulesDto) {
     return this.municipal.publish(

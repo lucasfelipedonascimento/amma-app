@@ -754,3 +754,13 @@ O `AuditInterceptor` registra **toda** chamada bem-sucedida de escrita em qualqu
 ### 16.5 Painel (Next.js)
 
 O navegador só fala com o painel: `POST /api/auth/request` e `/api/auth/verify` (OTP → cookies `httpOnly`, `SameSite=Strict`, só para quem tem papel de painel), `POST /api/auth/logout` e `/api/proxy/<admin|panel>/...` (repassa com o token; escritas exigem `Origin` igual ao host). Variável: `ADMIN_API_URL`.
+
+## Autenticação: reautenticação, sair de todos os aparelhos e limites (auditoria de segurança, Parte 1)
+
+- `POST /auth/logout-all` (logado): revoga todos os refresh tokens da conta e a reautenticação. `204`.
+- `POST /auth/reauth/request` (logado, sem corpo): envia um código por SMS ao telefone **da própria conta** (mesmos limites do OTP). Em modo simulado devolve `devCode`.
+- `POST /auth/reauth/verify` `{ code }`: confirma e libera ações críticas por **10 min**.
+- Ações críticas do admin (preço, despacho, estorno, bloqueio e recurso, aprovação de comerciante/documento/ponto, orçamento, regras municipais, compra coletiva, seguro, sobras, criação de assembleia, verificação de gênero) respondem `403 { code: "REAUTH_REQUIRED" }` sem reautenticação recente.
+- Limites: `429` com `Retry-After`. Padrão 300 req/min por IP; `/auth/otp/*` 10/min por IP; `/auth/refresh` e `/auth/logout` 30/min; `/auth/reauth/*` 5–10 por 10 min; `/share/:token/data` 30/min; uploads 20/h por usuário. OTP: 3 códigos/10 min, 10/dia e 20 erros/hora por telefone.
+- JWT: `HS256`, `iss=amma-api`, `aud=amma-app`.
+- Painel: `POST /api/auth/reauth/request|verify` (repassam à API com o token do cookie).

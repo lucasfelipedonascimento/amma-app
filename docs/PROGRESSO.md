@@ -415,3 +415,15 @@ Admin do seed `+5583999990001`; sócio `+5583999990003` (o código aparece na te
 - O app não tem tela de bloqueio/recurso; emergência continua sem plantão.
 
 **Falta:** implementar os itens das seções A–I do checklist (próxima etapa de código) e as ações 👤 (contas de loja, jurídico, provedores).
+
+## Auditoria de segurança 🟡 (em andamento, por partes) — ver `docs/SEGURANCA.md`
+
+**Parte 1 — autenticação e sessões ✅ (2026-10-30)**
+
+- Fase 1 (reconhecimento) apresentada e aprovada; escolhas do usuário: reautenticação por OTP (não TOTP), bloqueio do `ENTREGUE` a mais de ~300 m do destino, correções feitas por partes.
+- Corrigido: corrida na contagem de tentativas do OTP (H2, confirmada com teste), limite de taxa geral/por rota/por usuário e cabeçalhos de segurança (H1), reautenticação por OTP nas ações críticas do admin, inclusive no painel (H3), guard global de negar por padrão (H5), JWT com `iss`/`aud`/algoritmo e segredo forte em produção (H6), `POST /auth/logout-all` (H7).
+- Testes: `test/auth-security.int.test.ts` (14), `jwt-config.test.ts`, `security-headers.test.ts`, 1 de componente no painel. Total: 367 de integração, 71+ unitários na API, 43 no painel, todos verdes; lint e typecheck limpos.
+- Variáveis novas: `TRUST_PROXY`, `RATE_LIMIT_SCALE`. Em produção `JWT_SECRET` precisa de 32+ caracteres.
+- **Para quem usa a API:** ações críticas do admin agora respondem `403 REAUTH_REQUIRED` até `POST /auth/reauth/request` + `/verify`. Scripts/testes que chamam essas rotas precisam reautenticar (helper `t.admin()` já faz).
+
+**Próximas partes:** 2 (autorização/IDOR e fraude de corrida, incluindo a regra dos 300 m), 3 (WebSocket, localização, uploads, LGPD), 4 (infra, mobile, painel, dependências).

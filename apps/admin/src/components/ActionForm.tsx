@@ -50,6 +50,40 @@ export function ActionForm({
   );
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Ação crítica sem reautenticação recente: pede o código por SMS e repete o envio.
+  const [reauth, setReauth] = useState<null | { sent: boolean; code: string; devCode?: string }>(
+    null,
+  );
+
+  async function postAuth(step: 'request' | 'verify', body: unknown) {
+    const res = await fetch(`/api/auth/reauth/${step}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    return { ok: res.ok, data: data as { devCode?: string; message?: unknown } };
+  }
+
+  async function startReauth() {
+    setBusy(true);
+    setError(null);
+    const r = await postAuth('request', {});
+    setBusy(false);
+    if (!r.ok) return setError('Não foi possível enviar o código. Tente de novo em instantes.');
+    setReauth({ sent: true, code: '', devCode: r.data.devCode });
+  }
+
+  async function confirmReauth() {
+    if (!reauth) return;
+    setBusy(true);
+    setError(null);
+    const r = await postAuth('verify', { code: reauth.code });
+    setBusy(false);
+    if (!r.ok) return setError('Código inválido ou expirado.');
+    setReauth(null);
+    await send();
+  }
 
   async function send() {
     setError(null);
@@ -58,7 +92,10 @@ export function ActionForm({
     setBusy(true);
     const r = await callApi(method, path, { ...fixed, ...built.body });
     setBusy(false);
-    if (!r.ok) return setError(r.error);
+    if (!r.ok) {
+      if (r.code === 'REAUTH_REQUIRED') return setReauth({ sent: false, code: '' });
+      return setError(r.error);
+    }
     setOpen(false);
     setValues(
       Object.fromEntries(
@@ -73,6 +110,56 @@ export function ActionForm({
       <button type="button" className={`btn ${tone}`} onClick={() => setOpen(true)}>
         {trigger}
       </button>
+    );
+
+  if (reauth)
+    return (
+      <form
+        className="action-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void (reauth.sent ? confirmReauth() : startReauth());
+        }}
+      >
+        <strong>Confirme que é você</strong>
+        <p>Esta é uma ação crítica. Enviamos um código por SMS para o seu celular.</p>
+        {reauth.sent && (
+          <label>
+            <span>Código de 6 dígitos</span>
+            <input
+              autoFocus
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={6}
+              value={reauth.code}
+              onChange={(e) => setReauth({ ...reauth, code: e.target.value.replace(/\D/g, '') })}
+            />
+            {reauth.devCode && <small>Modo de teste: o código é {reauth.devCode}</small>}
+          </label>
+        )}
+        {error && (
+          <p role="alert" className="error">
+            {error}
+          </p>
+        )}
+        <div className="row">
+          <button
+            type="submit"
+            className={`btn ${tone}`}
+            disabled={busy || (reauth.sent && reauth.code.length !== 6)}
+          >
+            {busy ? 'Aguarde…' : reauth.sent ? 'Confirmar e executar' : 'Enviar código'}
+          </button>
+          <button
+            type="button"
+            className="btn plain"
+            onClick={() => setReauth(null)}
+            disabled={busy}
+          >
+            Cancelar
+          </button>
+        </div>
+      </form>
     );
 
   return (

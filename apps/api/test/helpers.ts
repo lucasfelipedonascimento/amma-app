@@ -6,6 +6,7 @@ import { PrismaClient } from '@prisma/client';
 import WebSocket from 'ws';
 import { AppModule } from '../src/app.module';
 import { DispatchService } from '../src/dispatch/dispatch.service';
+import { ReauthService } from '../src/auth/reauth';
 import { RedisService } from '../src/common/redis.service';
 
 // Pontos de João Pessoa. 0,001° de latitude ≈ 111 m.
@@ -153,8 +154,21 @@ export class TestApp {
     return this.user(['PASSAGEIRO'], name);
   }
 
-  admin() {
+  /** Admin já reautenticado (ações críticas exigem código por SMS recente: veja `reauth`). */
+  async admin() {
+    const u = await this.user(['ADMIN'], 'Admin');
+    await this.reauth(u.id);
+    return u;
+  }
+
+  /** Admin SEM reautenticação, para testar o bloqueio das ações críticas. */
+  adminStale() {
     return this.user(['ADMIN'], 'Admin');
+  }
+
+  /** Simula o resultado de POST /auth/reauth/verify. */
+  reauth(userId: string) {
+    return this.app.get(ReauthService).grant(userId);
   }
 
   /** Motorista com perfil, veículo e os 3 documentos aprovados. */

@@ -63,6 +63,31 @@ describe('ActionForm', () => {
     expect(refresh).not.toHaveBeenCalled();
   });
 
+  it('ação crítica pede o código por SMS e repete o envio depois de confirmar', async () => {
+    callApi
+      .mockResolvedValueOnce({ ok: false, status: 403, error: 'x', code: 'REAUTH_REQUIRED' })
+      .mockResolvedValueOnce({ ok: true, data: {} });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue({ ok: true, json: async () => ({ devCode: '123456' }) });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<ActionForm {...props} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Bloquear' }));
+    await userEvent.type(screen.getByLabelText('Motivo'), 'documento falso comprovado');
+    await userEvent.click(screen.getByRole('button', { name: 'Bloquear' }));
+    expect(await screen.findByText('Confirme que é você')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Enviar código' }));
+    await userEvent.type(await screen.findByLabelText(/Código de 6 dígitos/), '123456');
+    await userEvent.click(screen.getByRole('button', { name: 'Confirmar e executar' }));
+    await waitFor(() => expect(refresh).toHaveBeenCalled());
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/auth/reauth/verify',
+      expect.objectContaining({ body: JSON.stringify({ code: '123456' }) }),
+    );
+    expect(callApi).toHaveBeenCalledTimes(2);
+    vi.unstubAllGlobals();
+  });
+
   it('ação sem campos pede confirmação', async () => {
     callApi.mockResolvedValue({ ok: true, data: {} });
     render(

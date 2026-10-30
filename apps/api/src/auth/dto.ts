@@ -1,14 +1,18 @@
-import { IsString, Length } from 'class-validator';
+import { IsString, Length, MaxLength } from 'class-validator';
 
 export class RequestOtpDto {
-  @IsString() phone!: string;
+  @IsString() @MaxLength(20) phone!: string;
 }
 
 export class VerifyOtpDto {
-  @IsString() phone!: string;
+  @IsString() @MaxLength(20) phone!: string;
   @IsString() @Length(6, 6) code!: string;
 }
 
 export class RefreshDto {
-  @IsString() refreshToken!: string;
+  @IsString() @MaxLength(256) refreshToken!: string;
+}
+
+export class ReauthDto {
+  @IsString() @Length(6, 6) code!: string;
 }

@@ -1,13 +1,18 @@
 import 'reflect-metadata';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { WsAdapter } from '@nestjs/platform-ws';
 import { AppModule } from './app.module';
 import { corsOptions, parseCorsOrigins } from './common/cors';
+import { securityHeaders } from './common/security-headers';
 import { setupSwagger } from './common/swagger';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // Atrás de proxy/balanceador, TRUST_PROXY (nº de proxies, ex.: 1) faz o limite de taxa usar o IP real.
+  if (process.env.TRUST_PROXY) app.set('trust proxy', Number(process.env.TRUST_PROXY));
+  app.use(securityHeaders(process.env.NODE_ENV === 'production'));
   // Log de acesso simples (método, rota, status). Não registra corpo nem cabeçalhos (tokens).
   const access = new Logger('HTTP');
   app.use(
