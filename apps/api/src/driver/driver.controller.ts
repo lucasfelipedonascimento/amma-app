@@ -12,7 +12,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { AuthGuard, AuthUser } from '../auth/auth.guard';
 import { Roles, RolesGuard } from '../auth/roles';
-import { DriverProfileDto, UploadDocumentDto, VehicleDto } from './dto';
+import { DriverProfileDto, GenderDto, UploadDocumentDto, VehicleDto } from './dto';
 import { DriverService, MAX_UPLOAD_BYTES } from './driver.service';
 
 @Controller('driver')
@@ -24,6 +24,12 @@ export class DriverController {
   @Put('profile')
   saveProfile(@Req() req: { user: AuthUser }, @Body() dto: DriverProfileDto) {
     return this.driver.saveProfile(req.user.id, dto);
+  }
+
+  /** Autodeclaração de gênero (para a opção "motorista mulher"); a associação confere depois. */
+  @Put('gender')
+  setGender(@Req() req: { user: AuthUser }, @Body() dto: GenderDto) {
+    return this.driver.setGender(req.user.id, dto.gender);
   }
 
   @Post('vehicles')

@@ -86,6 +86,22 @@ O motorista continua sem biblioteca de navegação: o estado decide a tela (ver 
 
 Reaproveita `Page/Card/Row`, `TabBar` e os estados de carregamento/erro/sem internet de `src/driver/components` (mesma identidade visual). Quem tem o papel MOTORISTA continua indo para o app do motorista.
 
+## Corridas de passageiro e segurança (Etapa 7)
+
+Não há módulo paralelo: a corrida **é** um `Delivery` com `kind = CORRIDA` (ver `docs/DECISOES.md`). O que é novo:
+
+| Onde                                                                | Responsabilidade                                                                                                                                             |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `shared/ride.ts`, `safety.ts`, `municipal-rules.ts`                 | Regras puras: tipos/perfis de preço, textos por tipo de pedido, PIN, regras do link, categorias de denúncia, retenção, **regras municipais e elegibilidade** |
+| `api/src/rides`                                                     | `RidesService` (estimativa por tipo, pedido) e `RidesController` (`/rides`, links, foto, registro). Delega o pedido a `DeliveryService.create(…, ride)`      |
+| `api/src/municipal`                                                 | `MunicipalRulesService`: regras vigentes (versionadas), publicação validada e avaliação de elegibilidade por motorista/veículo                               |
+| `api/src/safety`                                                    | `SafetyService` (emergência, denúncia, link, registro, retenção, verificação de gênero), `RatingsService`, controllers (`/safety`, `/share`, `/admin/*`)     |
+| `api/src/dispatch`                                                  | Ganhou os filtros de veículo/preferência e `availability()` (estimativa). O restante do despacho é o mesmo                                                   |
+| `api/src/delivery`                                                  | `advance` confere o PIN; `relayToClient` grava o trajeto das corridas; `views.ts` decide o que cada parte enxerga                                            |
+| `mobile/src/client/screens/RideScreen.tsx`, `components/RideSafety` | Pedir corrida; cartão do motorista (placa, foto, PIN), compartilhar, emergência e denúncia no acompanhamento (`TrackingScreen` serve às duas)                |
+| `mobile/src/safety`                                                 | `ReportCard` e `RateCard`, usados pelos dois apps. `EmergencyButton` (em `driver/components`) também é usado pelo passageiro                                 |
+| `mobile/src/driver/components/RideEligibilityCard.tsx`              | Conta do motorista: habilitação por veículo, envio dos documentos que faltam, autodeclaração de gênero                                                       |
+
 ## Testes
 
 - `pnpm test` — unitários, sem banco (shared e api).

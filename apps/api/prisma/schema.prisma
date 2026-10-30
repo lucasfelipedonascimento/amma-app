@@ -26,6 +26,10 @@ enum DocumentType {
   CNH
   DOCUMENTO_VEICULO
   FOTO
+  // Etapa 7: só exigidos se as regras municipais de corrida de passageiro pedirem.
+  ANTECEDENTES
+  LICENCA_MUNICIPAL
+  SEGURO_PASSAGEIROS
 }
 
 enum ApprovalStatus {
@@ -108,6 +112,51 @@ enum PaymentStatus {
   ESTORNADO
 }
 
+// Etapa 7: o mesmo pedido (Delivery) serve a entregas e a corridas de passageiro.
+// Deve ficar idêntico a DELIVERY_KINDS em packages/shared (há teste que confere).
+enum DeliveryKind {
+  ENTREGA
+  CORRIDA
+}
+
+enum Gender {
+  FEMININO
+  MASCULINO
+  NAO_INFORMADO
+}
+
+// Deve ficar idêntico a RATING_DIRECTIONS em packages/shared.
+enum RatingDirection {
+  CLIENTE_AVALIA_MOTORISTA
+  MOTORISTA_AVALIA_CLIENTE
+}
+
+// Deve ficar idêntico a REPORT_CATEGORIES / REPORT_STATUSES / EMERGENCY_STATUSES em packages/shared.
+enum ReportCategory {
+  ASSEDIO
+  VIOLENCIA
+  DISCRIMINACAO
+  DIRECAO_PERIGOSA
+  MOTORISTA_DIFERENTE
+  VEICULO_DIFERENTE
+  COBRANCA_INDEVIDA
+  OUTRO
+}
+
+enum ReportStatus {
+  ABERTA
+  EM_ANALISE
+  PROCEDENTE
+  IMPROCEDENTE
+  ARQUIVADA
+}
+
+enum EmergencyStatus {
+  ABERTO
+  EM_ATENDIMENTO
+  ENCERRADO
+}
+
 enum LedgerKind {
   RIDE_SETTLEMENT
   REVERSAL
@@ -141,13 +190,16 @@ model User {
   reviewedDocs  Document[]     @relation("DocumentReviewer")
 
   presence           DriverPresence?
-  deliveriesAsClient Delivery[]      @relation("DeliveryClient")
-  deliveriesAsWorker Delivery[]      @relation("DeliveryWorker")
+  deliveriesAsClient Delivery[]       @relation("DeliveryClient")
+  deliveriesAsWorker Delivery[]       @relation("DeliveryWorker")
   deliveryOffers     DeliveryOffer[]
   pushTokens         PushToken[]
   merchant           Merchant?
-  ratingsGiven       Rating[]        @relation("RatingAuthor")
-  ratingsReceived    Rating[]        @relation("RatingDriver")
+  ratingsGiven       Rating[]         @relation("RatingAuthor")
+  ratingsReceived    Rating[]         @relation("RatingRatee")
+  emergencyAlerts    EmergencyAlert[]
+  reportsMade        Report[]         @relation("ReportReporter")
+  reportsReceived    Report[]         @relation("ReportReported")
 }
 
 // Código de uso único enviado por SMS. Só o hash é guardado.
@@ -189,14 +241,19 @@ model Consent {
 }
 
 model DriverProfile {
-  userId          String   @id
-  fullName        String
-  cpf             String   @unique
-  birthDate       DateTime @db.Date
+  userId             String    @id
+  fullName           String
+  cpf                String    @unique
+  birthDate          DateTime  @db.Date
   // Taxa de associação escolhida pelo motorista (0, 2 ou 4); vira cotas no ledger.
-  associationRate Int      @default(0)
-  updatedAt       DateTime @updatedAt @db.Timestamptz(3)
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  associationRate    Int       @default(0)
+  // Etapa 7: autodeclarado pelo motorista; só vale para a opção "motorista mulher" depois que o
+  // admin confere (genderVerifiedAt). Mudar o gênero zera a verificação.
+  gender             Gender?
+  genderVerifiedAt   DateTime? @db.Timestamptz(3)
+  genderVerifiedById String?
+  updatedAt          DateTime  @updatedAt @db.Timestamptz(3)
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Vehicle {
@@ -209,6 +266,7 @@ model Vehicle {
   createdAt DateTime    @default(now()) @db.Timestamptz(3)
   user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   documents Document[]
+  rides     Delivery[]
 
   @@unique([userId, plate])
 }
@@ -317,9 +375,19 @@ model DriverPresence {
 // Pedido de entrega. Valores em centavos; distância em metros; tempo em segundos.
 model Delivery {
   id       String         @id @default(uuid())
+  // Etapa 7: CORRIDA = passageiro. coleta = embarque, entrega = destino. Mesma máquina de estados.
+  kind     DeliveryKind   @default(ENTREGA)
   status   DeliveryStatus @default(CRIADO)
   clientId String
   workerId String?
+
+  // Só corrida: tipo de veículo pedido, preferência por motorista mulher e veículo que atendeu.
+  vehicleType         VehicleType?
+  womenDriverOnly     Boolean      @default(false)
+  vehicleId           String?
+  // PIN de 4 dígitos: o passageiro informa ao motorista para confirmar o embarque. Nunca vai ao motorista.
+  boardingPin         String?
+  boardingPinAttempts Int          @default(0)
 
   pickupLat      Float
   pickupLng      Float
@@ -355,17 +423,23 @@ model Delivery {
   deliveredAt DateTime? @db.Timestamptz(3)
   updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
 
-  client User            @relation("DeliveryClient", fields: [clientId], references: [id])
-  worker User?           @relation("DeliveryWorker", fields: [workerId], references: [id])
-  offers  DeliveryOffer[]
-  events  DeliveryEvent[]
-  payment Payment?
-  rating  Rating?
+  client          User             @relation("DeliveryClient", fields: [clientId], references: [id])
+  worker          User?            @relation("DeliveryWorker", fields: [workerId], references: [id])
+  offers          DeliveryOffer[]
+  events          DeliveryEvent[]
+  vehicle         Vehicle?         @relation(fields: [vehicleId], references: [id])
+  payment         Payment?
+  ratings         Rating[]
+  shares          TripShare[]
+  tripPoints      TripPoint[]
+  emergencyAlerts EmergencyAlert[]
+  reports         Report[]
 
   @@unique([clientId, idempotencyKey])
   @@index([clientId, createdAt])
   @@index([workerId, status])
   @@index([status])
+  @@index([kind, clientId, createdAt])
 }
 
 // Uma oferta a um motorista. Um pedido tem no máximo uma oferta PENDENTE por vez.
@@ -436,6 +510,8 @@ model LedgerPosting {
 // Tabela de preço versionada (PricingConfig do shared). Versões nunca são editadas.
 model PricingConfigVersion {
   version          String   @id
+  // ENTREGA, CORRIDA_CARRO ou CORRIDA_MOTO (PRICING_PROFILES do shared). Cada perfil tem a sua linha do tempo.
+  profile          String   @default("ENTREGA")
   effectiveFrom    DateTime @db.Timestamptz(3)
   baseCents        Int
   perKmCents       Int
@@ -444,7 +520,7 @@ model PricingConfigVersion {
   createdById      String?
   createdAt        DateTime @default(now()) @db.Timestamptz(3)
 
-  @@index([effectiveFrom])
+  @@index([profile, effectiveFrom])
 }
 
 // Parâmetros do despacho (linha única, id = 1). Sem linha => padrões do shared.
@@ -517,18 +593,123 @@ model Merchant {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
-// Avaliação do cliente sobre a entrega (1 a 5; o banco confere). Uma por pedido.
+// Avaliação depois de entregue (1 a 5; o banco confere). Uma por direção em cada pedido:
+// o cliente avalia o motorista e, nas corridas, o motorista avalia o passageiro (avaliação mútua).
 model Rating {
-  id         String   @id @default(uuid())
-  deliveryId String   @unique
+  id         String          @id @default(uuid())
+  deliveryId String
+  direction  RatingDirection @default(CLIENTE_AVALIA_MOTORISTA)
   authorId   String
-  driverId   String
+  // Quem recebeu a nota.
+  rateeId    String
   stars      Int
   comment    String?
-  createdAt  DateTime @default(now()) @db.Timestamptz(3)
-  delivery   Delivery @relation(fields: [deliveryId], references: [id])
-  author     User     @relation("RatingAuthor", fields: [authorId], references: [id])
-  driver     User     @relation("RatingDriver", fields: [driverId], references: [id])
+  createdAt  DateTime        @default(now()) @db.Timestamptz(3)
+  delivery   Delivery        @relation(fields: [deliveryId], references: [id])
+  author     User            @relation("RatingAuthor", fields: [authorId], references: [id])
+  ratee      User            @relation("RatingRatee", fields: [rateeId], references: [id])
 
-  @@index([driverId])
+  @@unique([deliveryId, direction])
+  @@index([rateeId])
+}
+
+// ---------------------------------------------------------------------------
+// Etapa 7: corridas de passageiro — segurança e regras municipais
+// ---------------------------------------------------------------------------
+
+// Link de acompanhamento da viagem para um contato de confiança. Só o hash do token é guardado.
+// O contato não precisa de conta nem de telefone cadastrado: recebe o link pelo compartilhamento do sistema.
+model TripShare {
+  id           String    @id @default(uuid())
+  deliveryId   String
+  tokenHash    String    @unique
+  contactLabel String?
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+  revokedAt    DateTime? @db.Timestamptz(3)
+  delivery     Delivery  @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+
+  @@index([deliveryId])
+}
+
+// Botão de emergência. Fica registrado mesmo se a conta for excluída (segurança), sem identificação.
+model EmergencyAlert {
+  id          String          @id @default(uuid())
+  userId      String
+  deliveryId  String?
+  // Quem apertou: PASSAGEIRO ou MOTORISTA (papel naquela corrida).
+  actorRole   String
+  lat         Float?
+  lng         Float?
+  note        String?
+  status      EmergencyStatus @default(ABERTO)
+  handledById String?
+  handledNote String?
+  createdAt   DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime        @updatedAt @db.Timestamptz(3)
+  user        User            @relation(fields: [userId], references: [id])
+  delivery    Delivery?       @relation(fields: [deliveryId], references: [id])
+
+  @@index([status, createdAt])
+  @@index([deliveryId])
+}
+
+// Canal de denúncia. O denunciado é sempre a outra parte da corrida (o app não aceita um id qualquer).
+model Report {
+  id          String         @id @default(uuid())
+  reporterId  String
+  reportedId  String?
+  deliveryId  String?
+  category    ReportCategory
+  description String
+  status      ReportStatus   @default(ABERTA)
+  handledById String?
+  // Resposta da associação, visível a quem denunciou.
+  resolution  String?
+  createdAt   DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime       @updatedAt @db.Timestamptz(3)
+  reporter    User           @relation("ReportReporter", fields: [reporterId], references: [id])
+  reported    User?          @relation("ReportReported", fields: [reportedId], references: [id])
+  delivery    Delivery?      @relation(fields: [deliveryId], references: [id])
+
+  @@index([status, createdAt])
+  @@index([deliveryId])
+  @@index([reportedId])
+}
+
+// Registro da viagem: posição do veículo durante a corrida. Apagado após TRIP_RECORD_RETENTION_DAYS,
+// exceto de corridas com denúncia ou alerta de emergência.
+model TripPoint {
+  id         String   @id @default(uuid())
+  deliveryId String
+  lat        Float
+  lng        Float
+  at         DateTime @default(now()) @db.Timestamptz(3)
+  delivery   Delivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+
+  @@index([deliveryId, at])
+  @@index([at])
+}
+
+// Quem da associação abriu o registro de uma viagem (auditoria de acesso a dado sensível).
+model TripRecordAccess {
+  id         String   @id @default(uuid())
+  deliveryId String
+  adminId    String
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([deliveryId])
+}
+
+// Regras municipais de corrida de passageiro (JSON validado por validateMunicipalRules). Versões nunca
+// são editadas; a vigente é a mais recente com effectiveFrom <= agora. Sem linha => padrão NÃO confirmado.
+model MunicipalRulesVersion {
+  version        String   @id
+  effectiveFrom  DateTime @db.Timestamptz(3)
+  rules          Json
+  // Fonte legal informada pelo admin (ex.: "Decreto X/2026, art. Y").
+  legalReference String?
+  createdById    String?
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([effectiveFrom])
 }

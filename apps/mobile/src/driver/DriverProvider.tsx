@@ -31,6 +31,8 @@ import type { ActiveDelivery, Coords, Earnings, LocationConsent, Offer, Presence
 export interface Completed {
   fareCents: number;
   workerNetCents: number;
+  /** Corrida de passageiro: permite avaliar o passageiro depois de concluída. */
+  rideId?: string;
 }
 
 export interface DriverValue {
@@ -69,7 +71,8 @@ export interface DriverValue {
   revokeConsent: () => Promise<void>;
   accept: () => Promise<void>;
   decline: (reason?: string) => Promise<void>;
-  advance: () => Promise<void>;
+  /** `pin` é o PIN de embarque (só corrida, ao confirmar o embarque). */
+  advance: (pin?: string) => Promise<void>;
   release: () => Promise<void>;
   prepareSignOut: () => Promise<void>;
 }
@@ -385,18 +388,19 @@ export function DriverProvider({ children }: { children: ReactNode }) {
   );
 
   const advance = useCallback(
-    () =>
+    (pin?: string) =>
       run(async () => {
-        const step = active && nextStep(active.status);
+        const step = active && nextStep(active.status, active.kind);
         if (!active || !step) return;
         const next = await api<ActiveDelivery & { settlement?: { workerNetCents: number } | null }>(
           `/driver/deliveries/${active.id}/${step.path}`,
-          { method: 'POST' },
+          { method: 'POST', ...(pin ? { body: { pin } } : {}) },
         );
         if (next.status === 'ENTREGUE') {
           setCompleted({
             fareCents: next.fareCents,
             workerNetCents: next.settlement?.workerNetCents ?? 0,
+            ...(active.kind === 'CORRIDA' ? { rideId: active.id } : {}),
           });
           setActive(null);
           void refreshEarnings();

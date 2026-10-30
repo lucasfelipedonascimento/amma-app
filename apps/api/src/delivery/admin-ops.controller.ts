@@ -45,7 +45,12 @@ export class AdminOpsController {
 
   @Post('pricing')
   createPricing(@Req() req: { user: AuthUser }, @Body() dto: PricingDto) {
-    return this.pricing.create({ ...dto, effectiveFrom: new Date(dto.effectiveFrom) }, req.user.id);
+    const { profile, ...table } = dto;
+    return this.pricing.create(
+      { ...table, effectiveFrom: new Date(dto.effectiveFrom) },
+      req.user.id,
+      profile,
+    );
   }
 
   @Get('deliveries/:id/events')

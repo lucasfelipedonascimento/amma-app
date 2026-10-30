@@ -10,6 +10,7 @@ import { DispatchService } from '../dispatch/dispatch.service';
 import { DispatchSettingsService } from '../dispatch/dispatch-settings.service';
 import { DriverService } from '../driver/driver.service';
 import { LedgerService } from '../ledger/ledger.service';
+import { MunicipalRulesService } from '../municipal/municipal-rules.service';
 import { PAYMENT_PROVIDER, createPaymentProvider } from '../payments/payment-provider';
 import { PaymentsController } from '../payments/payments.controller';
 import { PaymentsService } from '../payments/payments.service';
@@ -18,12 +19,22 @@ import { PresenceService } from '../presence/presence.service';
 import { PricingService } from '../pricing/pricing.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { RealtimeService } from '../realtime/realtime.service';
+import { RidesController } from '../rides/rides.controller';
+import { RidesService } from '../rides/rides.service';
+import { RatingsService } from '../safety/ratings.service';
+import {
+  AdminSafetyController,
+  SafetyController,
+  ShareController,
+} from '../safety/safety.controller';
+import { SafetyService } from '../safety/safety.service';
+import { StorageService } from '../common/storage.service';
 import { AdminOpsController } from './admin-ops.controller';
 import { DeliveryController } from './delivery.controller';
 import { DeliveryService } from './delivery.service';
 import { DriverOpsController } from './driver-ops.controller';
 
-/** Entregas, despacho, presença do motorista, tempo real e ledger (Etapa 4). */
+/** Entregas, corridas de passageiro, despacho, presença do motorista, tempo real, ledger e segurança (Etapas 4 a 7). */
 @Module({
   exports: [PositionStore],
   controllers: [
@@ -32,6 +43,10 @@ import { DriverOpsController } from './driver-ops.controller';
     AdminOpsController,
     DispatchController,
     PaymentsController,
+    RidesController,
+    SafetyController,
+    ShareController,
+    AdminSafetyController,
   ],
   providers: [
     RedisService,
@@ -41,6 +56,11 @@ import { DriverOpsController } from './driver-ops.controller';
     RealtimeGateway,
     PricingService,
     LedgerService,
+    MunicipalRulesService,
+    RatingsService,
+    SafetyService,
+    RidesService,
+    StorageService,
     PaymentsService,
     {
       provide: PAYMENT_PROVIDER,

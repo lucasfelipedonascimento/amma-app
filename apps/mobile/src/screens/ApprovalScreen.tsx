@@ -1,5 +1,5 @@
 import { Text, View } from 'react-native';
-import type { ApprovalStatus, DocumentType } from '@amma/shared';
+import { DOCUMENT_LABEL, type ApprovalStatus, type DocumentType } from '@amma/shared';
 import { colors } from '../theme';
 import { Button, Screen } from '../ui';
 
@@ -34,7 +34,7 @@ const TEXT: Record<ApprovalStatus, { title: string; msg: string; color: string }
   },
 };
 const NAME: Record<DocumentType, string> = {
-  CNH: 'CNH',
+  ...DOCUMENT_LABEL,
   DOCUMENTO_VEICULO: 'Documento do veículo',
   FOTO: 'Foto',
 };

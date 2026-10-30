@@ -1,4 +1,11 @@
-import { canRelease, completedSteps, nextStep } from '../steps';
+import {
+  DELIVERY_STEPS,
+  RIDE_STEPS,
+  canRelease,
+  completedSteps,
+  nextStep,
+  stepsFor,
+} from '../steps';
 
 describe('etapas da entrega', () => {
   it('conta as etapas concluídas por estado', () => {
@@ -27,5 +34,18 @@ describe('etapas da entrega', () => {
     expect(canRelease('A_CAMINHO_COLETA')).toBe(true);
     expect(canRelease('COLETADO')).toBe(false);
     expect(canRelease('A_CAMINHO_ENTREGA')).toBe(false);
+  });
+});
+
+describe('etapas da corrida de passageiro', () => {
+  it('usam as mesmas rotas e estados da entrega, com textos de corrida', async () => {
+    expect(RIDE_STEPS.map((s) => s.path)).toEqual(DELIVERY_STEPS.map((s) => s.path));
+    expect(RIDE_STEPS.map((s) => s.reaches)).toEqual(DELIVERY_STEPS.map((s) => s.reaches));
+    expect(stepsFor('CORRIDA')).toBe(RIDE_STEPS);
+    expect(stepsFor('ENTREGA')).toBe(DELIVERY_STEPS);
+    expect(stepsFor(undefined)).toBe(DELIVERY_STEPS);
+    expect(nextStep('A_CAMINHO_COLETA', 'CORRIDA')?.action).toBe('Confirmar embarque');
+    expect(nextStep('A_CAMINHO_COLETA')?.action).toBe('Confirmar coleta');
+    expect(nextStep('A_CAMINHO_ENTREGA', 'CORRIDA')?.action).toBe('Concluir a viagem');
   });
 });

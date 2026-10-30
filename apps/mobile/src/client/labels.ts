@@ -1,4 +1,11 @@
-import type { CancelReason, DeliveryStatus, PaymentMethod, PaymentStatus } from '@amma/shared';
+import {
+  statusLabel,
+  type CancelReason,
+  type DeliveryKind,
+  type DeliveryStatus,
+  type PaymentMethod,
+  type PaymentStatus,
+} from '@amma/shared';
 import type { ClientDelivery } from './types';
 
 export const STATUS_LABEL: Record<DeliveryStatus, string> = {
@@ -21,6 +28,17 @@ export const CANCEL_LABEL: Record<CancelReason, string> = {
   PAGAMENTO_NAO_CONFIRMADO: 'O Pix não foi pago a tempo.',
 };
 
+const RIDE_CANCEL_LABEL: Record<CancelReason, string> = {
+  ...CANCEL_LABEL,
+  CLIENTE_DESISTIU: 'Você cancelou a corrida.',
+  COLETA_IMPOSSIVEL: 'O motorista não conseguiu encontrar você.',
+  ENTREGA_IMPOSSIVEL: 'O motorista encerrou a viagem antes do destino.',
+  ADMIN_CANCELOU: 'A associação cancelou a corrida.',
+};
+
+export const cancelText = (kind: DeliveryKind | undefined, reason: CancelReason): string =>
+  (kind === 'CORRIDA' ? RIDE_CANCEL_LABEL : CANCEL_LABEL)[reason];
+
 export const PAYMENT_STATUS_LABEL: Record<PaymentStatus, string> = {
   PENDENTE: 'Aguardando pagamento',
   PAGO: 'Pago',
@@ -31,9 +49,9 @@ export const PAYMENT_STATUS_LABEL: Record<PaymentStatus, string> = {
 export const METHOD_LABEL: Record<PaymentMethod, string> = { PIX: 'Pix', CARTAO: 'Cartão' };
 
 /** Texto do estado do pedido; com Pix ainda pendente, o que importa é o pagamento. */
-export function statusText(d: Pick<ClientDelivery, 'status' | 'payment'>): string {
+export function statusText(d: Pick<ClientDelivery, 'status' | 'payment' | 'kind'>): string {
   if (d.status === 'CRIADO' && d.payment?.status === 'PENDENTE') return 'Aguardando o pagamento';
-  return STATUS_LABEL[d.status];
+  return d.kind === 'CORRIDA' ? statusLabel('CORRIDA', d.status) : STATUS_LABEL[d.status];
 }
 
 export const isOpen = (s: DeliveryStatus) => s !== 'ENTREGUE' && s !== 'CANCELADO';
@@ -47,6 +65,13 @@ export const CLIENT_STAGES = [
   'Indo à coleta',
   'A caminho',
   'Entregue',
+] as const;
+
+export const RIDE_STAGES = [
+  'Pagamento e busca',
+  'Motorista a caminho',
+  'Em viagem',
+  'Concluída',
 ] as const;
 
 /** Quantas etapas já foram concluídas (0 a 4), para a barra de progresso do cliente. */

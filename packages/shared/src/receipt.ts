@@ -2,9 +2,12 @@ import { businessDay } from './earnings';
 import type { Cents } from './money';
 import type { DeliveryStatus } from './delivery-state';
 import type { PaymentMethod, PaymentStatus } from './payment';
+import type { DeliveryKind } from './ride';
 
 export interface ReceiptInput {
   deliveryId: string;
+  /** Omitido = ENTREGA (recibos de antes das corridas). */
+  kind?: DeliveryKind;
   createdAt: string;
   deliveredAt: string | null;
   status: DeliveryStatus;
@@ -39,6 +42,8 @@ export interface Receipt extends Omit<ReceiptInput, 'deliveryId'> {
 
 export const RECEIPT_NOTICE =
   'Comprovante de pagamento da entrega. Não é nota fiscal; o pagamento é processado por parceiro regulado.';
+export const RIDE_RECEIPT_NOTICE =
+  'Comprovante de pagamento da corrida. Não é nota fiscal; o pagamento é processado por parceiro regulado.';
 
 /** Recibo só existe para quem pagou (ou foi estornado): pedido sem pagamento confirmado não gera. */
 export function canIssueReceipt(input: Pick<ReceiptInput, 'payment'>): boolean {
@@ -60,6 +65,6 @@ export function buildReceipt(input: ReceiptInput): Receipt {
     number: receiptNumber(input.deliveryId, input.createdAt),
     paidCents: refunded ? 0 : amount,
     refundedCents: refunded ? amount : 0,
-    notice: RECEIPT_NOTICE,
+    notice: input.kind === 'CORRIDA' ? RIDE_RECEIPT_NOTICE : RECEIPT_NOTICE,
   };
 }

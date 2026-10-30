@@ -1,5 +1,5 @@
 import { ConflictException, Injectable, ServiceUnavailableException } from '@nestjs/common';
-import { selectPricingConfig, type PricingConfig } from '@amma/shared';
+import { selectPricingConfig, type PricingConfig, type PricingProfile } from '@amma/shared';
 import { PrismaService } from '../prisma.service';
 
 const toConfig = (r: {
@@ -16,12 +16,14 @@ export class PricingService {
   constructor(private readonly prisma: PrismaService) {}
 
   list() {
-    return this.prisma.pricingConfigVersion.findMany({ orderBy: { effectiveFrom: 'desc' } });
+    return this.prisma.pricingConfigVersion.findMany({
+      orderBy: [{ profile: 'asc' }, { effectiveFrom: 'desc' }],
+    });
   }
 
-  /** Tabela vigente em `at`. Sem tabela configurada, não há como cotar. */
-  async current(at = new Date()): Promise<PricingConfig> {
-    const rows = await this.prisma.pricingConfigVersion.findMany();
+  /** Tabela vigente em `at` para o perfil (entrega, corrida de carro ou de moto). Sem tabela, não há como cotar. */
+  async current(at = new Date(), profile: PricingProfile = 'ENTREGA'): Promise<PricingConfig> {
+    const rows = await this.prisma.pricingConfigVersion.findMany({ where: { profile } });
     try {
       return selectPricingConfig(rows.map(toConfig), at);
     } catch {
@@ -36,15 +38,19 @@ export class PricingService {
   async create(
     input: Omit<PricingConfig, 'effectiveFrom'> & { effectiveFrom: Date },
     adminId: string,
+    profile: PricingProfile = 'ENTREGA',
   ) {
     const latest = await this.prisma.pricingConfigVersion.findFirst({
+      where: { profile },
       orderBy: { effectiveFrom: 'desc' },
     });
     if (latest && input.effectiveFrom <= latest.effectiveFrom)
-      throw new ConflictException('effectiveFrom deve ser posterior ao da última versão');
+      throw new ConflictException(
+        'effectiveFrom deve ser posterior ao da última versão deste perfil',
+      );
     try {
       return await this.prisma.pricingConfigVersion.create({
-        data: { ...input, createdById: adminId },
+        data: { ...input, profile, createdById: adminId },
       });
     } catch (e) {
       if ((e as { code?: string }).code === 'P2002')

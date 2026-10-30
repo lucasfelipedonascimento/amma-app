@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/commo
 import { ConfigService } from '@nestjs/config';
 import { RedisService } from '../common/redis.service';
 import { PaymentsService } from '../payments/payments.service';
+import { SafetyService } from '../safety/safety.service';
 import { DispatchService } from './dispatch.service';
 
 /**
@@ -14,6 +15,7 @@ export class DispatchScheduler implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger('DispatchScheduler');
   private timer?: NodeJS.Timeout;
   private running = false;
+  private lastPurge = 0;
   private readonly everyMs: number;
 
   constructor(
@@ -21,6 +23,7 @@ export class DispatchScheduler implements OnModuleInit, OnModuleDestroy {
     private readonly dispatch: DispatchService,
     private readonly redis: RedisService,
     private readonly payments: PaymentsService,
+    private readonly safety: SafetyService,
   ) {
     this.everyMs = Number(config.get('DISPATCH_TICK_MS') ?? 3000);
   }
@@ -44,6 +47,12 @@ export class DispatchScheduler implements OnModuleInit, OnModuleDestroy {
       if (lock === 'OK') {
         await this.dispatch.tick();
         await this.payments.tick();
+        // Retenção do registro de viagens: uma limpeza por hora basta.
+        if (Date.now() - this.lastPurge > 3_600_000) {
+          this.lastPurge = Date.now();
+          const n = await this.safety.purgeTripPoints();
+          if (n > 0) this.logger.log(`Registro de viagens: ${n} posições antigas apagadas`);
+        }
       }
     } catch (e) {
       this.logger.error((e as Error).message);

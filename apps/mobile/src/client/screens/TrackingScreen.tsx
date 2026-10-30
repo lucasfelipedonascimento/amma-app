@@ -12,10 +12,11 @@ import { useClient } from '../ClientProvider';
 import { ClientSteps } from '../components/ClientSteps';
 import { DeliveryMap } from '../components/DeliveryMap';
 import { PixPanel } from '../components/PixPanel';
+import { DriverCheckCard, RideSafetyCard } from '../components/RideSafety';
 import { RatingStars } from '../components/RatingStars';
 import { useLiveDelivery } from '../hooks';
 import {
-  CANCEL_LABEL,
+  cancelText,
   METHOD_LABEL,
   PAYMENT_STATUS_LABEL,
   canClientCancel,
@@ -46,16 +47,18 @@ export function TrackingScreen({
       <LoadingView label="Carregando o pedido…" />
     );
 
+  const ride = d.kind === 'CORRIDA';
+  const what = ride ? 'corrida' : 'pedido';
   const cancel = () =>
     Alert.alert(
-      'Cancelar pedido?',
+      `Cancelar ${what}?`,
       d.payment?.status === 'PAGO'
         ? 'O valor pago será devolvido (estorno).'
-        : 'O pedido será cancelado.',
+        : `${ride ? 'A corrida' : 'O pedido'} será cancelado.`,
       [
         { text: 'Manter', style: 'cancel' },
         {
-          text: 'Cancelar pedido',
+          text: `Cancelar ${what}`,
           style: 'destructive',
           onPress: async () => {
             setBusy(true);
@@ -87,7 +90,7 @@ export function TrackingScreen({
       <Button title="‹ Voltar" kind="ghost" onPress={onBack} />
       <Heading>{statusText(d)}</Heading>
       {d.status === 'CANCELADO' && d.cancelReason ? (
-        <Text style={s.muted}>{CANCEL_LABEL[d.cancelReason]}</Text>
+        <Text style={s.muted}>{cancelText(d.kind, d.cancelReason)}</Text>
       ) : null}
       {d.status !== 'CANCELADO' ? <ClientSteps delivery={d} /> : null}
 
@@ -97,10 +100,13 @@ export function TrackingScreen({
 
       <DeliveryMap pickup={d.pickup} dropoff={d.dropoff} driver={live ? driverAt : null} />
 
+      {ride && live && d.driver ? <DriverCheckCard d={d} /> : null}
+
       <Card>
-        {d.driver ? <Row label="Motorista" value={d.driver.name ?? '—'} /> : null}
-        <Row label="Coleta" value={d.pickup.address} />
-        <Row label="Entrega" value={d.dropoff.address} />
+        {d.driver && !ride ? <Row label="Motorista" value={d.driver.name ?? '—'} /> : null}
+        <Row label={ride ? 'Saída' : 'Coleta'} value={d.pickup.address} />
+        <Row label={ride ? 'Destino' : 'Entrega'} value={d.dropoff.address} />
+        {ride && d.womenDriverOnly ? <Row label="Motorista" value="Mulher (pedido)" /> : null}
         {d.notes ? <Row label="Item" value={d.notes} /> : null}
         <Row label="Distância" value={formatDistance(d.distanceMeters)} />
         <Row label="Tempo estimado" value={formatDuration(d.durationSeconds)} />
@@ -111,9 +117,11 @@ export function TrackingScreen({
 
       {d.status === 'ENTREGUE' ? <RatingCard d={d} onRated={() => void reload()} /> : null}
 
+      {ride && d.driver ? <RideSafetyCard d={d} active={live} /> : null}
+
       <ErrorText message={actionError} />
       {canClientCancel(d.status) ? (
-        <Button title="Cancelar pedido" kind="danger" onPress={cancel} loading={busy} />
+        <Button title={`Cancelar ${what}`} kind="danger" onPress={cancel} loading={busy} />
       ) : null}
       {d.payment && (d.payment.status === 'PAGO' || d.payment.status === 'ESTORNADO') ? (
         <Button title="Ver recibo" kind="ghost" onPress={onReceipt} />
@@ -173,7 +181,9 @@ function RatingCard({ d, onRated }: { d: ClientDelivery; onRated: () => void }) 
 
   return (
     <Card>
-      <Text style={s.title}>Como foi a entrega?</Text>
+      <Text style={s.title}>
+        {d.kind === 'CORRIDA' ? 'Como foi a viagem?' : 'Como foi a entrega?'}
+      </Text>
       <RatingStars value={stars} onChange={setStars} />
       <Field
         label="Comentário (opcional)"

@@ -132,16 +132,29 @@ describe('Relatório', () => {
 });
 
 describe('Abas do cliente', () => {
-  it('cliente comum: Pedir, Pedidos e Conta', async () => {
+  it('passageiro: Entrega, Corrida, Pedidos e Conta', async () => {
     await render(
       <WithClient value={clientValue()}>
         <ClientTabs />
       </WithClient>,
     );
-    expect(screen.getAllByRole('tab')).toHaveLength(3);
-    for (const label of ['Pedir', 'Pedidos', 'Conta']) expect(screen.getByText(label)).toBeTruthy();
+    expect(screen.getAllByRole('tab')).toHaveLength(4);
+    for (const label of ['Entrega', 'Corrida', 'Pedidos', 'Conta'])
+      expect(screen.getByText(label)).toBeTruthy();
     expect(screen.queryByText('Loja')).toBeNull();
     expect(screen.queryByText('Relatório')).toBeNull();
+  });
+
+  it('quem não é passageiro (só comerciante) não vê a aba Corrida', async () => {
+    mockApi.mockResolvedValue(report(7));
+    await render(
+      <WithClient value={clientValue({ isMerchant: true, isPassenger: false })}>
+        <ClientTabs />
+      </WithClient>,
+    );
+    expect(screen.queryByText('Corrida')).toBeNull();
+    for (const label of ['Entrega', 'Pedidos', 'Loja', 'Relatório', 'Conta'])
+      expect(screen.getByText(label)).toBeTruthy();
   });
 
   it('comerciante também vê Loja e Relatório', async () => {
@@ -151,7 +164,7 @@ describe('Abas do cliente', () => {
         <ClientTabs />
       </WithClient>,
     );
-    for (const label of ['Pedir', 'Pedidos', 'Loja', 'Relatório', 'Conta'])
+    for (const label of ['Entrega', 'Pedidos', 'Loja', 'Relatório', 'Conta'])
       expect(screen.getByText(label)).toBeTruthy();
     await fireEvent.press(screen.getByText('Loja'));
     expect(screen.getByText('Meu estabelecimento')).toBeTruthy();

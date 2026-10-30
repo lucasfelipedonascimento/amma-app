@@ -4,9 +4,10 @@ import { colors } from '../../theme';
 import { Button, ErrorText } from '../../ui';
 import { AccountActions } from '../../screens/AccountActions';
 import { Card, Heading, Page } from '../components/layout';
+import { RideEligibilityCard } from '../components/RideEligibilityCard';
 import { useDriver } from '../DriverProvider';
 
-/** Conta do motorista: consentimento de localização (revogável), sair e excluir conta. */
+/** Conta do motorista: localização (revogável), habilitação para corridas, sair e excluir conta. */
 export function AccountScreen() {
   const { me } = useSession();
   const d = useDriver();
@@ -39,6 +40,7 @@ export function AccountScreen() {
         ) : null}
         <ErrorText message={d.actionError} />
       </Card>
+      <RideEligibilityCard />
       <AccountActions beforeSignOut={d.prepareSignOut} />
     </Page>
   );

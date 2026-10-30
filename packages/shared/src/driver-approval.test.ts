@@ -62,3 +62,29 @@ describe('driverApproval', () => {
     expect(r.rejected).toEqual([]);
   });
 });
+
+describe('documentos opcionais das regras municipais', () => {
+  const ok = (
+    type: 'CNH' | 'DOCUMENTO_VEICULO' | 'FOTO' | 'LICENCA_MUNICIPAL',
+    status: 'APROVADO' | 'REPROVADO' = 'APROVADO',
+  ) => ({
+    type,
+    status,
+    createdAt: '2026-01-01T00:00:00Z',
+  });
+  it('não entram na aprovação geral: sem eles o motorista de entregas continua aprovado', () => {
+    expect(driverApproval([ok('CNH'), ok('DOCUMENTO_VEICULO'), ok('FOTO')]).status).toBe(
+      'APROVADO',
+    );
+  });
+  it('um documento extra reprovado não reprova o motorista de entregas', () => {
+    const a = driverApproval([
+      ok('CNH'),
+      ok('DOCUMENTO_VEICULO'),
+      ok('FOTO'),
+      ok('LICENCA_MUNICIPAL', 'REPROVADO'),
+    ]);
+    expect(a.status).toBe('APROVADO');
+    expect(a.rejected).toEqual([]);
+  });
+});

@@ -95,7 +95,7 @@ node scripts/demo-delivery.mjs <LATITUDE> <LONGITUDE> http://IP_DO_PC:3000
 
 Entre com a passageira do seed (`+5583999990002`) ou a comerciante (`+5583999990006`). Para ver o pedido andando, deixe um motorista online (`+5583999990003`) em outro aparelho/emulador, perto da coleta. **Tudo aqui usa o pagamento de teste:** nenhum Pix ou cartão real é cobrado.
 
-- [ ] **Pedir:** coleta, entrega e descrição obrigatórias; “Usar minha localização” preenche a coleta (pede permissão _durante o uso_).
+- [ ] **Entrega** (aba): coleta, entrega e descrição obrigatórias; “Usar minha localização” preenche a coleta (pede permissão _durante o uso_).
 - [ ] Endereço que o aparelho não acha → mensagem dizendo qual (coleta ou entrega). Endereços sem cidade são buscados em João Pessoa.
 - [ ] “Ver preço” mostra mapa com os dois pontos, distância, tempo e **total antes de pagar**. Nada é cobrado até “Confirmar e pagar”.
 - [ ] **Cartão** `4242 4242 4242 4242` (qualquer validade futura e CVV de 3 dígitos): pedido nasce pago e vai ao motorista. `4000 0000 0000 0002` → “Cartão recusado pelo banco” e **nenhum pedido** aparece em Pedidos. Número com dígito trocado → “Confira o número do cartão.”
@@ -112,6 +112,33 @@ Entre com a passageira do seed (`+5583999990002`) ou a comerciante (`+5583999990
 
 > Mapa: como no app do motorista, o mapa real do Android precisa de `GOOGLE_MAPS_API_KEY` (build próprio).
 
+### Roteiro G — Corridas de passageiro (Etapa 7)
+
+Precisa de **dois aparelhos/emuladores**: passageira `+5583999990002` e motorista de **carro** `+5583999990007` (mulher verificada, no seed). O motorista `...0003` é de moto: serve para conferir que **não** recebe corrida de carro. Deixe o motorista online perto do ponto de saída. Tudo simulado (Pix/cartão de teste, rota em linha reta sem `ROUTE_PROVIDER=mapbox`).
+
+Passageira (aba **Corrida**):
+
+- [ ] **Estimativa:** saída e destino → “Ver preços e tempo” mostra mapa, distância, **tempo de viagem** e, por tipo de veículo, **preço** e “Motorista chega em X min” (ou “Nenhum motorista por perto agora”). Só aparecem os tipos liberados (carro; **moto só depois de a associação liberar**). Nada é cobrado até “Pedir …”.
+- [ ] Trocar de tipo muda o preço e o botão (“Pedir carro · R$ …”); avisos do tipo (ex.: capacete na moto) aparecem abaixo.
+- [ ] **Prefiro motorista mulher** (switch): a estimativa passa a contar só mulheres verificadas; sem nenhuma por perto o pedido fica “Buscando motorista” até acabar o tempo (e estorna) — não cai em outro motorista. Se a configuração desligar a opção, o switch some.
+- [ ] Pagar com Pix ou cartão de teste igual à entrega; o pedido abre o acompanhamento.
+- [ ] **Acompanhamento:** “Motorista a caminho de você” → “Você embarcou” → “Em viagem” → “Viagem concluída”. Saída/Destino no lugar de Coleta/Entrega.
+- [ ] **Confira o motorista:** foto, nome, nota (“sem avaliações ainda” no início), **placa** e modelo — a placa precisa bater com o carro que chegar — e o **PIN de embarque** grande. Depois de embarcar o PIN some.
+- [ ] **Compartilhar minha viagem** abre o menu do sistema com um link; abra o link no navegador do PC: página com motorista, veículo, saída, destino e posição, atualizando sozinha, **sem telefone nem valor**. Revogar não tem botão no app ainda (só pela API).
+- [ ] **🚨 Emergência:** pede confirmação, oferece 190/192/193 e “Só avisar a associação”; texto “A associação foi avisada”. No banco/API (`GET /admin/safety/alerts`) o alerta aparece com a posição; o link do contato passa a exibir a faixa vermelha.
+- [ ] **Denunciar:** escolha a categoria, descreva (mín. 10 letras) → “Denúncia enviada”. Nunca pede nem mostra a identidade da outra pessoa.
+- [ ] Cancelar até embarcar → estorno; depois de embarcar não há botão de cancelar.
+- [ ] Concluída: **Como foi a viagem?** (nota 1–5) e a nota do motorista só aparece como média.
+
+Motorista (`...0007`):
+
+- [ ] A oferta diz **Nova corrida**, o tipo de veículo, “Motorista mulher” quando for o caso, **nome e nota do passageiro**, Embarque/Destino e o dinheiro (taxa 10%, associação, líquido) como nas entregas.
+- [ ] Ao chegar: **Confirmar embarque** fica desligado até digitar os 4 dígitos do PIN que o passageiro mostra. PIN errado → mensagem; 5 erros travam o embarque (o passageiro cancela).
+- [ ] Os botões seguem “Iniciar a viagem” → “Concluir a viagem”. 🚨 Emergência avisa a associação; **Denunciar** fica disponível.
+- [ ] Ao concluir: “Corrida concluída ✓” e **Como foi o passageiro?** (opcional; “Agora não” dispensa).
+- [ ] **Conta → Corridas de passageiro:** lista cada veículo com “Habilitado” ou o que falta (idade do veículo, documento…), botão **Enviar:** para os documentos pedidos, e a declaração de gênero (Feminino mostra “Aguardando a conferência” até o admin conferir). Com as regras padrão aparece o aviso **“NÃO confirmados”**.
+- [ ] Motorista de moto (`...0003`) **não** recebe corrida de carro; recebe entregas normalmente.
+
 ## 4. Problemas comuns
 
 | Sintoma                              | Causa provável                                                                                                                                |
@@ -127,6 +154,6 @@ Entre com a passageira do seed (`+5583999990002`) ou a comerciante (`+5583999990
 
 ```
 pnpm --filter @amma/shared build
-pnpm --filter @amma/mobile test       # Jest: 150 testes (motorista e cliente): componentes, hooks, provider e WebSocket
+pnpm --filter @amma/mobile test       # Jest: 193 testes (motorista e cliente): componentes, hooks, provider e WebSocket
 pnpm --filter @amma/mobile typecheck && pnpm lint
 ```

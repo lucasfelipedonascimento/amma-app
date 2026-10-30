@@ -40,3 +40,12 @@ export function parseReaisToCents(text: string): number | null {
   if (!Number.isFinite(n) || n < 0) return null;
   return Math.round(n * 100);
 }
+
+/** "★ 4,6 (12 avaliações)"; com menos de 3 notas não há média, só a quantidade. */
+export function formatRating(
+  r: { average: number | null; count: number } | null | undefined,
+): string {
+  if (!r || r.count === 0) return 'sem avaliações ainda';
+  const n = `${r.count} ${r.count === 1 ? 'avaliação' : 'avaliações'}`;
+  return r.average === null ? n : `★ ${String(r.average).replace('.', ',')} (${n})`;
+}

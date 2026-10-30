@@ -78,6 +78,22 @@ export class AccountService {
       // Endereço do estabelecimento e textos livres das avaliações são dados pessoais; o resto (valores) fica.
       this.prisma.merchant.deleteMany({ where: { userId } }),
       this.prisma.rating.updateMany({ where: { authorId: userId }, data: { comment: null } }),
+      // Segurança (Etapa 7): links de viagem revogados; trajeto apagado, salvo corridas sob denúncia ou
+      // alerta (guarda para apuração); texto livre do alerta de emergência apagado.
+      this.prisma.tripShare.updateMany({
+        where: { delivery: { OR: [{ clientId: userId }, { workerId: userId }] }, revokedAt: null },
+        data: { revokedAt: new Date() },
+      }),
+      this.prisma.tripPoint.deleteMany({
+        where: {
+          delivery: {
+            OR: [{ clientId: userId }, { workerId: userId }],
+            reports: { none: {} },
+            emergencyAlerts: { none: {} },
+          },
+        },
+      }),
+      this.prisma.emergencyAlert.updateMany({ where: { userId }, data: { note: null } }),
       this.prisma.driverPresence.deleteMany({ where: { userId } }),
       this.prisma.document.deleteMany({ where: { userId } }),
       this.prisma.vehicle.deleteMany({ where: { userId } }),

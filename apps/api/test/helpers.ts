@@ -1,6 +1,7 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { WsAdapter } from '@nestjs/platform-ws';
 import { Test } from '@nestjs/testing';
+import { DEFAULT_MUNICIPAL_RULES, type MunicipalRules } from '@amma/shared';
 import { PrismaClient } from '@prisma/client';
 import WebSocket from 'ws';
 import { AppModule } from '../src/app.module';
@@ -28,6 +29,7 @@ export interface TestUser {
 export class TestApp {
   readonly prisma = new PrismaClient();
   private phoneSeq = 0;
+  private rulesSeq = 0;
 
   private constructor(
     readonly app: INestApplication,
@@ -73,6 +75,45 @@ export class TestApp {
         minimumFareCents: 1100,
       },
     });
+    // Corridas de passageiro: pisos diferentes por tipo de veículo, para o teste saber qual tabela foi usada.
+    for (const [profile, minimumFareCents] of [
+      ['CORRIDA_CARRO', 1500],
+      ['CORRIDA_MOTO', 1000],
+    ] as const)
+      await this.prisma.pricingConfigVersion.create({
+        data: {
+          version: `teste-${profile.toLowerCase()}-1`,
+          profile,
+          effectiveFrom: new Date('2026-01-01T00:00:00Z'),
+          baseCents: 300,
+          perKmCents: 150,
+          perMinuteCents: 30,
+          minimumFareCents,
+        },
+      });
+  }
+
+  /** Publica uma versão das regras municipais já em vigor, sobre o padrão do código. */
+  async setRules(patch: {
+    car?: Partial<MunicipalRules['car']>;
+    moto?: Partial<MunicipalRules['moto']>;
+    womenDriverOptionEnabled?: boolean;
+  }) {
+    const rules: MunicipalRules = {
+      ...DEFAULT_MUNICIPAL_RULES,
+      womenDriverOptionEnabled:
+        patch.womenDriverOptionEnabled ?? DEFAULT_MUNICIPAL_RULES.womenDriverOptionEnabled,
+      car: { ...DEFAULT_MUNICIPAL_RULES.car, ...patch.car },
+      moto: { ...DEFAULT_MUNICIPAL_RULES.moto, ...patch.moto },
+    };
+    const n = ++this.rulesSeq;
+    await this.prisma.municipalRulesVersion.create({
+      data: {
+        version: `teste-regras-${n}`,
+        effectiveFrom: new Date(Date.now() - 3_600_000 + n),
+        rules: rules as unknown as object,
+      },
+    });
   }
 
   async req(method: string, path: string, token?: string, body?: unknown): Promise<Res> {
@@ -116,7 +157,18 @@ export class TestApp {
   }
 
   /** Motorista com perfil, veículo e os 3 documentos aprovados. */
-  async driver(name = 'Motorista', opts: { approved?: boolean; associationRate?: number } = {}) {
+  async driver(
+    name = 'Motorista',
+    opts: {
+      approved?: boolean;
+      associationRate?: number;
+      vehicleType?: 'MOTO' | 'CARRO';
+      vehicleYear?: number;
+      gender?: 'FEMININO' | 'MASCULINO' | 'NAO_INFORMADO';
+      genderVerified?: boolean;
+      extraDocuments?: ('ANTECEDENTES' | 'LICENCA_MUNICIPAL' | 'SEGURO_PASSAGEIROS')[];
+    } = {},
+  ) {
     const u = await this.user(['MOTORISTA'], name);
     const n = this.phoneSeq;
     await this.prisma.driverProfile.create({
@@ -126,13 +178,27 @@ export class TestApp {
         cpf: String(10000000000 + n),
         birthDate: new Date('1990-01-01T00:00:00Z'),
         associationRate: opts.associationRate ?? 0,
+        gender: opts.gender,
+        genderVerifiedAt: opts.genderVerified ? new Date() : null,
       },
     });
+    const vehicleType = opts.vehicleType ?? 'MOTO';
     const vehicle = await this.prisma.vehicle.create({
-      data: { userId: u.id, type: 'MOTO', plate: `ABC${1000 + n}`, model: 'CG 160', year: 2022 },
+      data: {
+        userId: u.id,
+        type: vehicleType,
+        plate: `ABC${1000 + n}`,
+        model: vehicleType === 'MOTO' ? 'CG 160' : 'Onix',
+        year: opts.vehicleYear ?? 2022,
+      },
     });
     const status = opts.approved === false ? 'PENDENTE' : 'APROVADO';
-    for (const type of ['CNH', 'DOCUMENTO_VEICULO', 'FOTO'] as const)
+    for (const type of [
+      'CNH',
+      'DOCUMENTO_VEICULO',
+      'FOTO',
+      ...(opts.extraDocuments ?? []),
+    ] as const)
       await this.prisma.document.create({
         data: {
           userId: u.id,
@@ -144,7 +210,12 @@ export class TestApp {
           vehicleId: type === 'DOCUMENTO_VEICULO' ? vehicle.id : undefined,
         },
       });
-    return u;
+    return { ...u, vehicleId: vehicle.id, plate: `ABC${1000 + n}` };
+  }
+
+  /** Motorista de carro, aprovado, pronto para corridas. */
+  carDriver(name = 'Motorista', opts: Parameters<TestApp['driver']>[1] = {}) {
+    return this.driver(name, { ...opts, vehicleType: 'CARRO' });
   }
 
   async online(driver: TestUser, at: { lat: number; lng: number }) {
@@ -160,6 +231,30 @@ export class TestApp {
     });
     if (r.status !== 201) throw new Error(`criar falhou: ${r.status} ${JSON.stringify(r.body)}`);
     return r.body;
+  }
+
+  rideBody(extra: object = {}) {
+    return { pickup: PICKUP, dropoff: DROPOFF, vehicleType: 'CARRO', payment: CARD_OK, ...extra };
+  }
+
+  async createRide(client: TestUser, extra: object = {}) {
+    const r = await this.post('/rides', client.token, this.rideBody(extra));
+    if (r.status !== 201) throw new Error(`corrida falhou: ${r.status} ${JSON.stringify(r.body)}`);
+    return r.body;
+  }
+
+  /** Cria a corrida, o motorista aceita, embarca com o PIN e conclui. Devolve o id. */
+  async runRideToEnd(client: TestUser, driver: TestUser) {
+    const ride = await this.createRide(client);
+    const offer = await this.currentOffer(driver);
+    await this.post(`/driver/offers/${offer.id}/accept`, driver.token);
+    await this.post(`/driver/deliveries/${ride.id}/en-route-pickup`, driver.token);
+    await this.post(`/driver/deliveries/${ride.id}/picked-up`, driver.token, {
+      pin: ride.boardingPin,
+    });
+    await this.post(`/driver/deliveries/${ride.id}/en-route-dropoff`, driver.token);
+    await this.post(`/driver/deliveries/${ride.id}/delivered`, driver.token);
+    return ride.id as string;
   }
 
   async currentOffer(driver: TestUser) {

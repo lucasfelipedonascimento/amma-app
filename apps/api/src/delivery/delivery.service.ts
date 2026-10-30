@@ -8,9 +8,17 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { randomUUID } from 'node:crypto';
+import { randomInt, randomUUID } from 'node:crypto';
 import {
   ACTIVE_DRIVER_STATUSES,
+  BOARDING_PIN_MAX_ATTEMPTS,
+  TRIP_POINT_MIN_INTERVAL_SECONDS,
+  generateBoardingPin,
+  pricingProfile,
+  type DeliveryKind,
+  type PricingProfile,
+  type RatingDirection,
+  type RideVehicleType,
   CANCEL_RULES,
   buildRideSettlement,
   calculateFare,
@@ -36,14 +44,29 @@ import { PricingService } from '../pricing/pricing.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { ROUTE_PROVIDER, type RouteProvider } from '../routing/route-provider';
 import { PaymentsService } from '../payments/payments.service';
-import { CancelDto, CreateDeliveryDto, QuoteDto, RatingDto } from './dto';
+import { RatingsService } from '../safety/ratings.service';
+import { CancelDto, CreateDeliveryDto, RatingDto } from './dto';
 import { cancelDelivery, moveStatus } from './transitions';
-import { deliveryView, type Viewer } from './views';
+import { deliveryView, type RideExtras, type Viewer } from './views';
 
 /** Entregas muito curtas são provavelmente erro de digitação do endereço. */
 const MIN_PICKUP_DROPOFF_METERS = 20;
 /** Posições do mesmo motorista mais frequentes que isto são descartadas. */
 const MIN_POSITION_INTERVAL_MS = 1000;
+
+/** Opções da corrida de passageiro; sem elas o pedido é uma entrega. */
+export interface RideOptions {
+  vehicleType: RideVehicleType;
+  womenDriverOnly: boolean;
+}
+
+/** Os relacionamentos que toda leitura de pedido traz. */
+const VIEW_INCLUDE = {
+  worker: { select: { name: true } },
+  payment: true,
+  ratings: true,
+  vehicle: true,
+} as const;
 
 /** Passos do motorista: estado de destino → estado anterior exigido. */
 const DRIVER_STEPS = {
@@ -58,6 +81,7 @@ export type DriverStep = keyof typeof DRIVER_STEPS;
 export class DeliveryService {
   private readonly logger = new Logger('Delivery');
   private readonly lastPosition = new Map<string, number>();
+  private readonly lastTripPoint = new Map<string, number>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -68,20 +92,33 @@ export class DeliveryService {
     private readonly positions: PositionStore,
     private readonly presence: PresenceService,
     private readonly payments: PaymentsService,
+    private readonly ratings: RatingsService,
     @Inject(ROUTE_PROVIDER) private readonly routes: RouteProvider,
   ) {}
 
   // ---------------------------------------------------------------- cliente
 
   /** Cotação: rota do provedor + tabela de preço vigente (com piso). Não cria nada. */
-  async quote(dto: QuoteDto) {
+  async quote(dto: { pickup: GeoPoint; dropoff: GeoPoint }, profile: PricingProfile = 'ENTREGA') {
+    const route = await this.route(dto);
+    return this.priceRoute(route, profile);
+  }
+
+  /** Rota entre os dois pontos (a mesma para todos os tipos de veículo). */
+  async route(dto: { pickup: GeoPoint; dropoff: GeoPoint }) {
     if (haversineMeters(dto.pickup, dto.dropoff) < MIN_PICKUP_DROPOFF_METERS)
-      throw new BadRequestException('Coleta e entrega estão no mesmo lugar');
-    const route = await this.routes.route(dto.pickup, dto.dropoff).catch((e: Error) => {
+      throw new BadRequestException('Origem e destino estão no mesmo lugar');
+    return this.routes.route(dto.pickup, dto.dropoff).catch((e: Error) => {
       this.logger.error(`Rota indisponível: ${e.message}`);
       throw new ServiceUnavailableException('Não foi possível calcular a rota agora');
     });
-    const config = await this.pricing.current();
+  }
+
+  async priceRoute(
+    route: { distanceMeters: number; durationSeconds: number },
+    profile: PricingProfile,
+  ) {
+    const config = await this.pricing.current(new Date(), profile);
     const fare = calculateFare(route.distanceMeters, route.durationSeconds, config);
     return {
       distanceMeters: route.distanceMeters,
@@ -96,8 +133,13 @@ export class DeliveryService {
    * Pede a entrega e cobra. Cartão: cobrado na hora (recusado → 402 e nada é criado). Pix: o pedido
    * nasce `CRIADO` com pagamento PENDENTE e só entra no despacho depois de pago.
    * A chave de idempotência faz repetir o pedido devolver o mesmo, sem cobrar de novo.
+   * Com `ride`, o pedido é uma corrida de passageiro (mesmo fluxo, com PIN de embarque).
    */
-  async create(user: AuthUser, dto: CreateDeliveryDto) {
+  async create(
+    user: AuthUser,
+    dto: Omit<CreateDeliveryDto, 'notes'> & { notes?: string },
+    ride?: RideOptions,
+  ) {
     const clientId = user.id;
     const key = dto.idempotencyKey;
     const existing = () =>
@@ -110,7 +152,8 @@ export class DeliveryService {
     const prev = await existing();
     if (prev) return this.get(user, prev.id);
 
-    const q = await this.quote(dto);
+    const kind: DeliveryKind = ride ? 'CORRIDA' : 'ENTREGA';
+    const q = await this.quote(dto, pricingProfile(kind, ride?.vehicleType));
     if (dto.expectedFareCents !== undefined && dto.expectedFareCents !== q.fareCents)
       throw new ConflictException('O preço mudou. Confira o novo valor antes de confirmar.');
     const id = randomUUID();
@@ -125,6 +168,14 @@ export class DeliveryService {
         await tx.delivery.create({
           data: {
             id,
+            kind,
+            ...(ride
+              ? {
+                  vehicleType: ride.vehicleType,
+                  womenDriverOnly: ride.womenDriverOnly,
+                  boardingPin: generateBoardingPin(randomInt),
+                }
+              : {}),
             clientId,
             idempotencyKey: key,
             pickupLat: dto.pickup.lat,
@@ -159,26 +210,23 @@ export class DeliveryService {
     return this.get(user, id);
   }
 
-  list(clientId: string, status?: DeliveryStatus, limit = 20) {
+  list(clientId: string, status?: DeliveryStatus, limit = 20, kind: DeliveryKind = 'ENTREGA') {
     return this.prisma.delivery
       .findMany({
-        where: { clientId, ...(status ? { status } : {}) },
+        where: { clientId, kind, ...(status ? { status } : {}) },
         orderBy: { createdAt: 'desc' },
         take: limit,
-        include: { worker: { select: { name: true } }, payment: true, rating: true },
+        include: VIEW_INCLUDE,
       })
       .then((rows) => rows.map((d) => deliveryView(d, 'CLIENTE', this.payments.provider)));
   }
 
   /** Cliente dono, motorista responsável ou admin. Para os demais, "não encontrado". */
   async get(user: AuthUser, id: string) {
-    const d = await this.prisma.delivery.findUnique({
-      where: { id },
-      include: { worker: { select: { name: true } }, payment: true, rating: true },
-    });
+    const d = await this.prisma.delivery.findUnique({ where: { id }, include: VIEW_INCLUDE });
     const viewer = this.viewerOf(user, d);
     if (!d || !viewer) throw new NotFoundException('Pedido não encontrado');
-    const [events, driverPosition] = await Promise.all([
+    const [events, driverPosition, extras] = await Promise.all([
       this.prisma.deliveryEvent.findMany({
         where: { deliveryId: id, type: 'STATUS' },
         orderBy: { createdAt: 'asc' },
@@ -187,12 +235,28 @@ export class DeliveryService {
       viewer !== 'MOTORISTA' && d.workerId && this.isOngoing(d.status)
         ? this.positions.get(d.workerId)
         : null,
+      this.extrasFor(d),
     ]);
     return {
-      ...deliveryView(d, viewer, this.payments.provider),
+      ...deliveryView(d, viewer, this.payments.provider, extras),
       timeline: events.map((e) => ({ status: e.toStatus, reason: e.reason, at: e.createdAt })),
       driverPosition,
     };
+  }
+
+  /** Reputação das duas partes de uma corrida (a outra parte vê só a média e a quantidade). */
+  private async extrasFor(d: {
+    kind: DeliveryKind;
+    clientId: string;
+    workerId: string | null;
+  }): Promise<RideExtras> {
+    if (d.kind !== 'CORRIDA') return {};
+    const [driverRating, passengerRating, client] = await Promise.all([
+      d.workerId ? this.ratings.summary(d.workerId, 'CLIENTE_AVALIA_MOTORISTA') : undefined,
+      this.ratings.summary(d.clientId, 'MOTORISTA_AVALIA_CLIENTE'),
+      this.prisma.user.findUnique({ where: { id: d.clientId }, select: { name: true } }),
+    ]);
+    return { driverRating, passengerRating, client: client ?? undefined };
   }
 
   /** Registro completo das decisões (admin). */
@@ -265,25 +329,37 @@ export class DeliveryService {
 
   // ---------------------------------------------------------------- avaliação, recibo e estorno
 
-  /** O cliente avalia o motorista, uma vez, depois de entregue. */
-  async rate(user: AuthUser, id: string, dto: RatingDto) {
+  /**
+   * Avaliação, uma vez por direção, depois de concluído. O cliente avalia o motorista (entrega e
+   * corrida); o motorista avalia o passageiro (só corrida). Quem recebe a nota não vê a nota nem o comentário.
+   */
+  async rate(
+    user: AuthUser,
+    id: string,
+    dto: RatingDto,
+    direction: RatingDirection = 'CLIENTE_AVALIA_MOTORISTA',
+  ) {
     const d = await this.prisma.delivery.findUnique({ where: { id } });
-    if (!d || d.clientId !== user.id) throw new NotFoundException('Pedido não encontrado');
+    const byClient = direction === 'CLIENTE_AVALIA_MOTORISTA';
+    if (!d || (byClient ? d.clientId : d.workerId) !== user.id)
+      throw new NotFoundException('Pedido não encontrado');
+    if (!byClient && d.kind !== 'CORRIDA')
+      throw new ConflictException('Só as corridas de passageiro têm avaliação do motorista');
     if (d.status !== 'ENTREGUE' || !d.workerId)
-      throw new ConflictException('Só dá para avaliar uma entrega concluída');
+      throw new ConflictException('Só dá para avaliar depois de concluído');
     try {
       await this.prisma.rating.create({
         data: {
           deliveryId: id,
+          direction,
           authorId: user.id,
-          driverId: d.workerId,
+          rateeId: byClient ? d.workerId : d.clientId,
           stars: dto.stars,
           comment: dto.comment?.trim() || null,
         },
       });
     } catch (e) {
-      if ((e as { code?: string }).code === 'P2002')
-        throw new ConflictException('Você já avaliou esta entrega');
+      if ((e as { code?: string }).code === 'P2002') throw new ConflictException('Você já avaliou');
       throw e;
     }
     return this.get(user, id);
@@ -298,6 +374,7 @@ export class DeliveryService {
     const p = d.payment;
     const input = {
       deliveryId: d.id,
+      kind: d.kind,
       createdAt: d.createdAt.toISOString(),
       deliveredAt: d.deliveredAt?.toISOString() ?? null,
       status: d.status,
@@ -347,12 +424,14 @@ export class DeliveryService {
   // ---------------------------------------------------------------- motorista
 
   /** Avança um passo (a caminho da coleta → coletado → a caminho da entrega → entregue). */
-  async advance(driverId: string, id: string, to: DriverStep) {
+  async advance(driverId: string, id: string, to: DriverStep, pin?: string) {
     const from = DRIVER_STEPS[to];
     const d = await this.prisma.delivery.findUnique({ where: { id } });
     if (!d || d.workerId !== driverId) throw new NotFoundException('Pedido não encontrado');
     if (d.status !== from)
       throw new ConflictException(`Pedido está em ${d.status}; esperado ${from}`);
+    // Corrida: o embarque só é confirmado com o PIN que o passageiro mostra (verifica quem embarca).
+    if (to === 'COLETADO' && d.kind === 'CORRIDA') await this.checkBoardingPin(d, pin);
 
     const now = new Date();
     const ok = await this.prisma.$transaction(async (tx) => {
@@ -369,7 +448,24 @@ export class DeliveryService {
     if (!ok) throw new ConflictException('O pedido mudou de estado; tente novamente');
     this.notify(d, to);
     const fresh = await this.prisma.delivery.findUniqueOrThrow({ where: { id } });
-    return deliveryView(fresh, 'MOTORISTA');
+    return deliveryView(fresh, 'MOTORISTA', undefined, await this.extrasFor(fresh));
+  }
+
+  /**
+   * Confere o PIN. O contador sobe ANTES da comparação e de forma atômica: tentativas simultâneas
+   * não furam o limite, e depois dele o embarque trava (o passageiro cancela ou chama a associação).
+   */
+  private async checkBoardingPin(d: { id: string; boardingPin: string | null }, pin?: string) {
+    const counted = await this.prisma.delivery.updateMany({
+      where: { id: d.id, boardingPinAttempts: { lt: BOARDING_PIN_MAX_ATTEMPTS } },
+      data: { boardingPinAttempts: { increment: 1 } },
+    });
+    if (counted.count === 0)
+      throw new ConflictException(
+        'Muitas tentativas de PIN. Confira o motorista e o veículo; o passageiro pode cancelar a corrida.',
+      );
+    if (!pin || pin !== d.boardingPin)
+      throw new ForbiddenException('PIN de embarque incorreto. Peça o PIN ao passageiro.');
   }
 
   /**
@@ -423,15 +519,14 @@ export class DeliveryService {
     return true;
   }
 
-  activeFor(driverId: string) {
-    return this.prisma.delivery
-      .findFirst({
-        where: {
-          workerId: driverId,
-          status: { in: ['ACEITO', 'A_CAMINHO_COLETA', 'COLETADO', 'A_CAMINHO_ENTREGA'] },
-        },
-      })
-      .then((d) => (d ? deliveryView(d, 'MOTORISTA') : null));
+  async activeFor(driverId: string) {
+    const d = await this.prisma.delivery.findFirst({
+      where: {
+        workerId: driverId,
+        status: { in: ['ACEITO', 'A_CAMINHO_COLETA', 'COLETADO', 'A_CAMINHO_ENTREGA'] },
+      },
+    });
+    return d ? deliveryView(d, 'MOTORISTA', undefined, await this.extrasFor(d)) : null;
   }
 
   /**
@@ -457,8 +552,9 @@ export class DeliveryService {
     try {
       const active = await this.prisma.delivery.findFirst({
         where: { workerId: driverId, status: { in: [...ACTIVE_DRIVER_STATUSES] } },
-        select: { id: true, clientId: true },
+        select: { id: true, clientId: true, kind: true, status: true },
       });
+      if (active) await this.recordTripPoint(active, p);
       if (active)
         this.realtime.sendToUser(active.clientId, 'driver.position', {
           deliveryId: active.id,
@@ -469,6 +565,21 @@ export class DeliveryService {
     } catch (e) {
       this.logger.warn(`Falha ao repassar posição: ${(e as Error).message}`);
     }
+  }
+
+  /**
+   * Registro da viagem (segurança): guarda a posição do veículo durante a corrida, no máximo uma a
+   * cada TRIP_POINT_MIN_INTERVAL_SECONDS. Só corridas, e só enquanto há passageiro a caminho ou a bordo.
+   */
+  private async recordTripPoint(
+    d: { id: string; kind: DeliveryKind; status: DeliveryStatus },
+    p: GeoPoint,
+  ) {
+    if (d.kind !== 'CORRIDA' || d.status === 'ACEITO') return;
+    const now = Date.now();
+    if (now - (this.lastTripPoint.get(d.id) ?? 0) < TRIP_POINT_MIN_INTERVAL_SECONDS * 1000) return;
+    this.lastTripPoint.set(d.id, now);
+    await this.prisma.tripPoint.create({ data: { deliveryId: d.id, lat: p.lat, lng: p.lng } });
   }
 
   private notify(

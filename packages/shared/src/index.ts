@@ -17,3 +17,6 @@ export * from './payment';
 export * from './receipt';
 export * from './merchant';
 export * from './rating';
+export * from './ride';
+export * from './safety';
+export * from './municipal-rules';

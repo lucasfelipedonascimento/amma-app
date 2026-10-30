@@ -17,6 +17,7 @@ import {
   type SettledDelivery,
 } from '@amma/shared';
 import type { Delivery } from '@prisma/client';
+import { MunicipalRulesService } from '../municipal/municipal-rules.service';
 import { PrismaService } from '../prisma.service';
 import { ROUTE_PROVIDER, type RouteProvider } from '../routing/route-provider';
 
@@ -39,8 +40,41 @@ export class DriverAppService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly municipal: MunicipalRulesService,
     @Inject(ROUTE_PROVIDER) private readonly routes: RouteProvider,
   ) {}
+
+  /** Habilitação para corridas de passageiro: por veículo, o que as regras municipais vigentes pedem. */
+  async rideEligibility(driverId: string) {
+    const book = await this.municipal.current();
+    const [list, profile] = await Promise.all([
+      this.municipal.evaluateDriver([driverId], book.rules),
+      this.prisma.driverProfile.findUnique({
+        where: { userId: driverId },
+        select: { gender: true, genderVerifiedAt: true },
+      }),
+    ]);
+    const vehicles = await this.prisma.vehicle.findMany({
+      where: { userId: driverId },
+      select: { id: true, plate: true, model: true, year: true, type: true },
+    });
+    const evals = list.get(driverId) ?? [];
+    return {
+      rulesVersion: book.version,
+      rulesAreDefault: book.isDefault,
+      warning: book.warning,
+      gender: profile?.gender ?? null,
+      womenDriverVerified: !!profile?.genderVerifiedAt,
+      vehicles: vehicles.map((v) => ({
+        ...v,
+        ...(evals.find((e) => e.vehicleId === v.id)?.eligibility ?? {
+          eligible: false,
+          problems: ['DOCUMENTO_FALTANDO'],
+          documentsToSend: [],
+        }),
+      })),
+    };
+  }
 
   /** Ganhos de hoje, da semana (7 dias, dia a dia) e histórico, sempre sobre entregas concluídas. */
   async earnings(driverId: string, now = new Date()) {

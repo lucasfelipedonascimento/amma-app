@@ -462,3 +462,104 @@ Os pedidos usam as mesmas rotas do cliente (`POST /deliveries` etc.); o históri
 ### Migração
 
 `20261030120000_payments_merchant_rating`: `Payment`, `Merchant`, `Rating`, `Delivery.idempotencyKey` (único por cliente), valor `PAGAMENTO_NAO_CONFIRMADO` em `CancelReason`, e `CHECK` no banco (`Rating.stars` 1–5; `Payment.amountCents > 0`).
+
+## 13. Corridas de passageiro, segurança e regras municipais (Etapa 7)
+
+Corrida e entrega são **o mesmo pedido** (`Delivery`) com `kind: "ENTREGA" | "CORRIDA"`. Estados, oferta, aceite, pagamento, estorno, cancelamento, avaliação, recibo e ledger são os das seções 1–12; abaixo só o que muda. Na corrida: **coleta = embarque, entrega = destino**, `COLETADO` = "passageiro a bordo" (exige o PIN), `A_CAMINHO_ENTREGA` = "em viagem", `ENTREGUE` = "viagem concluída".
+
+### 13.1 Passageiro (`PASSAGEIRO`) — `/rides`
+
+| Rota                                                          | Descrição                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /rides/rules`                                            | O que pode ser escolhido hoje, vindo da configuração municipal: `{ city, womenDriverOptionEnabled, vehicleTypes: [{ type, label, enabled, notices }] }`.                                                                                                                                                                                                                                                                                                                                  |
+| `POST /rides/quote`                                           | `{ pickup, dropoff, womenDriverOnly? }` (cada ponto `{ lat, lng, address }`). Devolve `{ distanceMeters, durationSeconds, womenDriverOnly, options: [{ vehicleType, label, available, fareCents, minimumApplied, pricingVersion, driversNearby, pickupEtaSeconds, notices }] }`. Só os tipos **liberados**. `available: false` = sem tabela de preço do tipo. `pickupEtaSeconds` = quanto o motorista elegível mais próximo leva para chegar (`null` = ninguém). Não cria nem cobra nada. |
+| `POST /rides`                                                 | `{ pickup, dropoff, vehicleType: "CARRO"\|"MOTO", womenDriverOnly?, payment, idempotencyKey?, expectedFareCents? }`. Mesmo pagamento/idempotência/`expectedFareCents` da seção 12. `409` se o tipo não está liberado ou a opção "motorista mulher" está desligada; `503` se não há tabela de preço do tipo. Resposta = visão do pedido (6) com `boardingPin`.                                                                                                                             |
+| `GET /rides?limit=`                                           | Suas corridas (`GET /deliveries` passa a listar **só entregas**; `?kind=CORRIDA` também funciona).                                                                                                                                                                                                                                                                                                                                                                                        |
+| `GET /deliveries/:id`, `/cancel`, `/rating`, `/receipt`       | Servem às corridas com o mesmo id. Cancelar: `CLIENTE_DESISTIU` até `A_CAMINHO_COLETA` (antes de embarcar), com **estorno total**; `COLETA_IMPOSSIVEL` (motorista: passageiro não apareceu) e `ENTREGA_IMPOSSIVEL` (motorista encerrou a viagem) como nas entregas.                                                                                                                                                                                                                       |
+| `GET /rides/:id/driver-photo`                                 | Foto aprovada do motorista (imagem), **só para o passageiro e só durante a corrida**. `Cache-Control: private, no-store`. `404` caso contrário.                                                                                                                                                                                                                                                                                                                                           |
+| `POST /rides/:id/shares`                                      | `{ contactLabel? }` → `201 { id, token, url, contactLabel, createdAt }`. Gera o link de acompanhamento (o `token` só aparece aqui; guardamos o hash). Só corrida **em andamento com motorista**; no máximo 5 links ativos por corrida.                                                                                                                                                                                                                                                    |
+| `GET /rides/:id/shares` / `DELETE /rides/:id/shares/:shareId` | Lista (sem token) / revoga (`204`). Só o dono.                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `GET /rides/:id/record`                                       | Registro da viagem do próprio passageiro: `{ events (só mudanças de estado), points: [{ lat, lng, at }], retentionDays, notice }`.                                                                                                                                                                                                                                                                                                                                                        |
+
+Na visão do pedido (seção 6), corridas trazem: `kind`, `vehicleType`, `womenDriverOnly`, `boardingPin` (**só o passageiro**, só até embarcar), `vehicle { type, plate, model, year }` e `driverRating { average, count }` (passageiro/admin; nunca o motorista), e para o **motorista** `passenger { firstName, rating }`. A oferta (`offer.created`, `GET /driver/offers/current`) traz `kind`, `vehicleType`, `womenDriverOnly` e `passenger`.
+
+### 13.2 Link público do contato — `/share/:token` (sem login)
+
+| Rota                     | Descrição                                                                                                                                                                                                                                                                                                          |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /share/:token`      | Página HTML simples (atualiza a cada 10 s). Cabeçalhos: `no-store`, `no-referrer`, `noindex`, CSP restritiva.                                                                                                                                                                                                      |
+| `GET /share/:token/data` | `{ status, statusText, ended, passenger, driver, vehicle { type, plate, model }, pickup, dropoff, driverPosition, emergency, updatedAt }`. **Lista fechada** (testada): só primeiros nomes; nunca telefone, id, valor, pagamento ou PIN. `404` para token inexistente/revogado/depois de 30 min do fim da corrida. |
+
+O app não envia nada ao contato: entrega o link ao compartilhamento do sistema (WhatsApp, SMS…), como no Pix. O token tem 192 bits; só o SHA-256 fica no banco.
+
+### 13.3 Motorista (`MOTORISTA`)
+
+| Rota                                    | Descrição                                                                                                                                                                                                                                           |
+| --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /driver/deliveries/:id/picked-up` | Corrida: corpo `{ pin }` (4 dígitos) **obrigatório**. PIN errado/ausente → `403`; depois de 5 tentativas o embarque trava (`409`; o passageiro ainda pode cancelar). O contador sobe antes da comparação, de forma atômica. Entrega ignora o corpo. |
+| `POST /driver/deliveries/:id/rating`    | `{ stars, comment? }` — o motorista avalia o passageiro. Só corrida `ENTREGUE`, uma vez. `409` em entrega comum.                                                                                                                                    |
+| `GET /driver/ride-eligibility`          | Por veículo: `{ eligible, problems[], documentsToSend[] }` pelas regras municipais vigentes, mais `rulesVersion`, `rulesAreDefault`, `warning`, `gender`, `womenDriverVerified`.                                                                    |
+| `PUT /driver/gender`                    | `{ gender: "FEMININO"\|"MASCULINO"\|"NAO_INFORMADO" }` → `{ gender, verified }`. Autodeclaração; mudar o valor zera a verificação. `409` sem perfil. (`PUT /driver/profile` também aceita `gender`.)                                                |
+| `POST /driver/documents`                | Passou a aceitar também `ANTECEDENTES`, `LICENCA_MUNICIPAL` e `SEGURO_PASSAGEIROS` (só contam se as regras municipais os exigirem; **não** entram na aprovação geral de entregas).                                                                  |
+| `POST /driver/offers/:id/accept`        | Em corrida, reconfere as regras no instante do aceite (`409` se o veículo deixou de atender) e grava o veículo que atende (`vehicleId`).                                                                                                            |
+
+### 13.4 Emergência e denúncia (qualquer usuário logado) — `/safety`
+
+| Rota                     | Descrição                                                                                                                                                                                                                                                                                                                   |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /safety/emergency` | `{ deliveryId?, lat?, lng?, note? }` → `200 { id, status, createdAt }`. Com `deliveryId`, só participante (`404` caso contrário). Registra o alerta e envia `safety.emergency` por WebSocket a todos os administradores. Apertar de novo em 120 s atualiza o mesmo alerta. O link do contato passa a mostrar o aviso.       |
+| `POST /safety/reports`   | `{ deliveryId?, category, description }` (`category` ∈ `ASSEDIO, VIOLENCIA, DISCRIMINACAO, DIRECAO_PERIGOSA, MOTORISTA_DIFERENTE, VEICULO_DIFERENTE, COBRANCA_INDEVIDA, OUTRO`; descrição 10–1000). O denunciado é **sempre a outra parte da corrida** — o corpo não aceita id de usuário (`400`). Máx. 10 por dia (`409`). |
+| `GET /safety/reports`    | Suas denúncias: `{ id, deliveryId, category, status, resolution, … }`. Nunca dados do denunciado.                                                                                                                                                                                                                           |
+
+### 13.5 Administrador (`ADMIN`)
+
+| Rota                                          | Descrição                                                                                                                                                                                                                                           |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /admin/safety/alerts?status=`            | Alertas de emergência (com nome/telefone de quem acionou). `PATCH /admin/safety/alerts/:id` `{ status: ABERTO\|EM_ATENDIMENTO\|ENCERRADO, note? }`.                                                                                                 |
+| `GET /admin/safety/reports?status=`           | Fila de denúncias, **graves primeiro** (`severe`), com denunciante e denunciado. `PATCH /admin/safety/reports/:id` `{ status: ABERTA\|EM_ANALISE\|PROCEDENTE\|IMPROCEDENTE\|ARQUIVADA, resolution? }` — a `resolution` aparece para quem denunciou. |
+| `GET /admin/rides/:id/trip-record`            | Registro completo da viagem: todos os eventos (inclui as decisões do despacho), trajeto, alertas, denúncias, quantos links foram criados e o **log de quem já abriu o registro**. Cada chamada grava um acesso (`TripRecordAccess`).                |
+| `POST /admin/drivers/:id/gender-verification` | `{ verified }`. Só verifica quem se declarou `FEMININO` (`400`). É isso que habilita a opção "motorista mulher" para o motorista.                                                                                                                   |
+| `GET /admin/municipal-rules` / `/current`     | Histórico de versões / a vigente (`{ version, rules, isDefault, legalReference, warning }`).                                                                                                                                                        |
+| `POST /admin/municipal-rules`                 | `{ version, effectiveFrom, rules, legalReference? }`. Valida (`400` com `problems[]`), exige `effectiveFrom` posterior à última versão (`409`). Versões antigas nunca são editadas.                                                                 |
+| `POST /admin/pricing`                         | Ganhou `profile` opcional: `ENTREGA` (padrão), `CORRIDA_CARRO` ou `CORRIDA_MOTO`. Cada perfil tem a sua linha do tempo (a regra "só vigência posterior" vale dentro do perfil). `GET` lista todos com `profile`.                                    |
+
+### 13.6 Regras municipais (`rules`)
+
+```json
+{
+  "city": "João Pessoa - PB",
+  "womenDriverOptionEnabled": true,
+  "car": {
+    "enabled": true,
+    "maxVehicleAgeYears": 10,
+    "minDriverAgeYears": 21,
+    "requiredDocuments": ["CNH", "DOCUMENTO_VEICULO", "FOTO"],
+    "passengerNotices": []
+  },
+  "moto": {
+    "enabled": false,
+    "maxVehicleAgeYears": 8,
+    "minDriverAgeYears": 21,
+    "requiredDocuments": ["CNH", "DOCUMENTO_VEICULO", "FOTO"],
+    "passengerNotices": ["…"]
+  }
+}
+```
+
+- `requiredDocuments` precisa incluir `CNH`, `DOCUMENTO_VEICULO` e `FOTO`; pode somar `ANTECEDENTES`, `LICENCA_MUNICIPAL`, `SEGURO_PASSAGEIROS`.
+- Idade do veículo = ano atual − ano de fabricação, **inclusiva** (limite 10 aceita 10). Idade do motorista em anos completos.
+- **Sem versão publicada vale o padrão do código, marcado como NÃO confirmado** (carro liberado, mototáxi desligado). Os números do padrão são exemplos, **não** a lei de João Pessoa.
+- As regras são aplicadas no **despacho** (quem recebe a oferta), no **aceite** e na **estimativa** (`driversNearby`).
+
+### 13.7 Despacho de corridas
+
+Mesmas regras da seção 2, com dois filtros novos, ambos registrados no `excluded` da decisão:
+
+- `VEICULO_INELEGIVEL` — o motorista não tem veículo do tipo pedido que cumpra as regras municipais vigentes;
+- `FORA_DA_PREFERENCIA` — o passageiro pediu motorista mulher e o motorista não é mulher **verificada** (autodeclarada + conferida pela associação).
+
+Sem nenhum elegível o pedido segue em `CRIADO` até a janela de busca acabar (`SEM_MOTORISTA`, com estorno) — **nunca** cai para outro motorista. Entregas não sofrem nenhum dos dois filtros.
+
+### 13.8 Variáveis e migração
+
+`PUBLIC_BASE_URL` (padrão `http://localhost:3000`): base dos links de compartilhamento. Migração `20261031120000_rides_safety_municipal`: `DeliveryKind`, campos de corrida em `Delivery` (+ `CHECK`: corrida sempre tem tipo de veículo e PIN de 4 dígitos), `Rating` mútua (`driverId` → `rateeId`, `direction`, única por pedido+direção), `PricingConfigVersion.profile`, `DriverProfile.gender*`, novos tipos de documento e as tabelas `TripShare`, `EmergencyAlert`, `Report`, `TripPoint`, `TripRecordAccess`, `MunicipalRulesVersion`.

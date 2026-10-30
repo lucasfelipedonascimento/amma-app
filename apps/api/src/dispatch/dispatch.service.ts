@@ -3,17 +3,21 @@ import {
   ACTIVE_DRIVER_STATUSES,
   canDispatch,
   chooseCandidate,
+  firstName,
+  isVerifiedWoman,
   type DeclineReason,
   type DispatchCandidate,
   type DispatchConfig,
   type DispatchReason,
 } from '@amma/shared';
 import { type Delivery } from '@prisma/client';
+import { MunicipalRulesService } from '../municipal/municipal-rules.service';
 import { PaymentsService } from '../payments/payments.service';
 import { PrismaService } from '../prisma.service';
 import { PresenceService } from '../presence/presence.service';
 import { PushService } from '../push/push.service';
 import { RealtimeService } from '../realtime/realtime.service';
+import { RatingsService } from '../safety/ratings.service';
 import { ROUTE_PROVIDER, type RouteProvider } from '../routing/route-provider';
 import { cancelDelivery, moveStatus, recordEvent } from '../delivery/transitions';
 import { offerView } from '../delivery/views';
@@ -55,6 +59,8 @@ export class DispatchService {
     private readonly realtime: RealtimeService,
     private readonly push: PushService,
     private readonly payments: PaymentsService,
+    private readonly municipal: MunicipalRulesService,
+    private readonly ratings: RatingsService,
     @Inject(ROUTE_PROVIDER) private readonly routes: RouteProvider,
   ) {}
 
@@ -105,7 +111,9 @@ export class DispatchService {
 
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
       const rows = await this.candidates(delivery, config);
-      const approved = await this.approvedDrivers(rows.map((r) => r.driverId));
+      const ids = rows.map((r) => r.driverId);
+      const approved = await this.approvedDrivers(ids);
+      const ride = delivery.kind === 'CORRIDA' ? await this.rideFilters(delivery, ids) : null;
       const now = Date.now();
       const choice = chooseCandidate(
         rows.map((r): DispatchCandidate => ({
@@ -116,6 +124,13 @@ export class DispatchService {
           busy: r.busy,
           alreadyTried: r.tried,
           onlineSince: (r.onlineSince ?? r.locationAt).toISOString(),
+          // Entregas não têm estas restrições (campos omitidos = sem restrição).
+          ...(ride
+            ? {
+                vehicleOk: ride.vehicleOk.has(r.driverId),
+                preferenceOk: !delivery.womenDriverOnly || ride.women.has(r.driverId),
+              }
+            : {}),
         })),
         config,
       );
@@ -138,7 +153,7 @@ export class DispatchService {
       const offer = await this.createOffer(delivery, chosen, eta, choice, rows.length, config);
       if (offer) {
         const rate = await this.associationRateOf(chosen.driverId);
-        const view = offerView(offer, delivery, rate);
+        const view = offerView(offer, delivery, rate, await this.passengerOf(delivery));
         this.realtime.sendToUser(chosen.driverId, 'offer.created', view);
         // Reforço para o app fechado/em segundo plano; não espera nem derruba o despacho.
         void this.push.notifyOffer(chosen.driverId, {
@@ -219,7 +234,10 @@ export class DispatchService {
   }
 
   /** Motoristas online com posição, dentro do raio, do mais perto ao mais longe. */
-  private candidates(delivery: Delivery, config: DispatchConfig): Promise<CandidateRow[]> {
+  private candidates(
+    delivery: Pick<Delivery, 'id' | 'pickupLat' | 'pickupLng'>,
+    config: DispatchConfig,
+  ): Promise<CandidateRow[]> {
     return this.prisma.$queryRaw<CandidateRow[]>`
       SELECT p."userId" AS "driverId",
              ST_Distance(p.location, q.pt)::float8 AS distance,
@@ -239,6 +257,81 @@ export class DispatchService {
         AND ST_DWithin(p.location, q.pt, ${config.radiusMeters})
       ORDER BY distance ASC
       LIMIT ${MAX_CANDIDATES}`;
+  }
+
+  /**
+   * Corrida de passageiro: quais motoristas têm um veículo do tipo pedido dentro das regras municipais
+   * vigentes e, se o passageiro pediu motorista mulher, quais são mulheres verificadas.
+   */
+  private async rideFilters(
+    delivery: Pick<Delivery, 'vehicleType' | 'womenDriverOnly'>,
+    ids: string[],
+  ) {
+    const { rules } = await this.municipal.current();
+    const evals = await this.municipal.evaluateDriver(ids, rules);
+    const vehicleOk = new Set<string>();
+    for (const [driverId, list] of evals)
+      if (list.some((v) => v.type === delivery.vehicleType && v.eligibility.eligible))
+        vehicleOk.add(driverId);
+    const women = new Set<string>();
+    if (delivery.womenDriverOnly) {
+      const profiles = await this.prisma.driverProfile.findMany({
+        where: { userId: { in: ids } },
+        select: { userId: true, gender: true, genderVerifiedAt: true },
+      });
+      for (const p of profiles)
+        if (isVerifiedWoman(p.gender, p.genderVerifiedAt)) women.add(p.userId);
+    }
+    return { vehicleOk, women };
+  }
+
+  /**
+   * Quantos motoristas poderiam atender uma corrida pedida agora e em quanto tempo o mais próximo chega.
+   * Usa as mesmas regras do despacho (online, aprovado, posição recente, no raio, veículo e preferência),
+   * mas só informa: não oferece nada a ninguém.
+   */
+  async availability(
+    pickup: { lat: number; lng: number },
+    vehicleType: 'CARRO' | 'MOTO',
+    womenDriverOnly: boolean,
+  ): Promise<{ drivers: number; pickupEtaSeconds: number | null }> {
+    const config = await this.settings.get();
+    const rows = await this.candidates(
+      { id: '00000000-0000-0000-0000-000000000000', pickupLat: pickup.lat, pickupLng: pickup.lng },
+      config,
+    );
+    const ids = rows.map((r) => r.driverId);
+    const approved = await this.approvedDrivers(ids);
+    const ride = await this.rideFilters({ vehicleType, womenDriverOnly }, ids);
+    const now = Date.now();
+    const choice = chooseCandidate(
+      rows.map((r): DispatchCandidate => ({
+        driverId: r.driverId,
+        distanceMeters: Math.round(r.distance),
+        positionAgeSeconds: (now - r.locationAt.getTime()) / 1000,
+        approved: approved.has(r.driverId),
+        busy: r.busy,
+        alreadyTried: false,
+        onlineSince: (r.onlineSince ?? r.locationAt).toISOString(),
+        vehicleOk: ride.vehicleOk.has(r.driverId),
+        preferenceOk: !womenDriverOnly || ride.women.has(r.driverId),
+      })),
+      config,
+    );
+    if (!choice.chosen) return { drivers: 0, pickupEtaSeconds: null };
+    const row = rows.find((r) => r.driverId === choice.chosen!.driverId)!;
+    const eta = await this.routes.route({ lat: row.lat, lng: row.lng }, pickup).catch(() => null);
+    return { drivers: choice.eligible, pickupEtaSeconds: eta?.durationSeconds ?? null };
+  }
+
+  /** O que o motorista pode saber do passageiro antes de aceitar: primeiro nome e nota. Nunca telefone. */
+  async passengerOf(delivery: Delivery) {
+    if (delivery.kind !== 'CORRIDA') return null;
+    const [user, rating] = await Promise.all([
+      this.prisma.user.findUnique({ where: { id: delivery.clientId }, select: { name: true } }),
+      this.ratings.summary(delivery.clientId, 'MOTORISTA_AVALIA_CLIENTE'),
+    ]);
+    return { firstName: firstName(user?.name), rating };
   }
 
   private async approvedDrivers(ids: string[]): Promise<Set<string>> {
@@ -288,6 +381,8 @@ export class DispatchService {
       await this.closeOffer(offerId, 'EXPIRADA', 'EXPIROU');
       throw new ConflictException('Oferta expirada');
     }
+    // Corrida: o veículo que atende precisa continuar válido (documento pode ter vencido desde a oferta).
+    const vehicleId = await this.rideVehicleFor(driverId, offer.deliveryId);
     const delivery = await this.prisma.$transaction(async (tx) => {
       const now = new Date();
       const claimed = await tx.deliveryOffer.updateMany({
@@ -299,7 +394,7 @@ export class DispatchService {
         id: offer.deliveryId,
         from: 'OFERECIDO',
         to: 'ACEITO',
-        data: { workerId: driverId, acceptedAt: now },
+        data: { workerId: driverId, acceptedAt: now, ...(vehicleId ? { vehicleId } : {}) },
         actorId: driverId,
       });
       if (!moved) throw new ConflictException('O pedido não está mais disponível');
@@ -317,6 +412,23 @@ export class DispatchService {
       status: 'ACEITO',
     });
     return delivery;
+  }
+
+  /** Veículo (id) que atende a corrida; null para entregas. Lança 409 se o motorista não tem nenhum. */
+  private async rideVehicleFor(driverId: string, deliveryId: string): Promise<string | null> {
+    const d = await this.prisma.delivery.findUnique({
+      where: { id: deliveryId },
+      select: { kind: true, vehicleType: true },
+    });
+    if (d?.kind !== 'CORRIDA') return null;
+    const { rules } = await this.municipal.current();
+    const list = (await this.municipal.evaluateDriver([driverId], rules)).get(driverId) ?? [];
+    const v = list.find((x) => x.type === d.vehicleType && x.eligibility.eligible);
+    if (!v)
+      throw new ConflictException(
+        'Nenhum veículo seu atende às regras desta corrida. Confira seus documentos na aba Conta.',
+      );
+    return v.vehicleId;
   }
 
   /** Recusar é sempre livre e não deixa marca nenhuma além do registro desta oferta. */
@@ -387,7 +499,7 @@ export class DispatchService {
         from: d.status,
         to: 'CRIADO',
         where: { workerId: driverId },
-        data: { workerId: null, acceptedAt: null },
+        data: { workerId: null, acceptedAt: null, vehicleId: null },
         actorId: driverId,
         reason: 'DESISTIU' satisfies DispatchReason,
       });
@@ -413,7 +525,14 @@ export class DispatchService {
         include: { delivery: true },
       })
       .then(async (o) =>
-        o ? offerView(o, o.delivery, await this.associationRateOf(driverId)) : null,
+        o
+          ? offerView(
+              o,
+              o.delivery,
+              await this.associationRateOf(driverId),
+              await this.passengerOf(o.delivery),
+            )
+          : null,
       );
   }
 

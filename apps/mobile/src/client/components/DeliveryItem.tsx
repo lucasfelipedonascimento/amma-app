@@ -15,10 +15,13 @@ export function DeliveryItem({ d, onPress }: { d: ClientDelivery; onPress: () =>
       style={s.item}
       testID={`delivery-${d.id}`}
       accessibilityRole="button"
-      accessibilityLabel={`Pedido de ${formatDateTime(d.createdAt)}, ${statusText(d)}`}
+      accessibilityLabel={`${d.kind === 'CORRIDA' ? 'Corrida' : 'Pedido'} de ${formatDateTime(d.createdAt)}, ${statusText(d)}`}
     >
       <View style={{ flex: 1, gap: 2 }}>
-        <Text style={s.date}>{formatDateTime(d.createdAt)}</Text>
+        <Text style={s.date}>
+          {d.kind === 'CORRIDA' ? 'Corrida · ' : ''}
+          {formatDateTime(d.createdAt)}
+        </Text>
         <Text style={s.addr} numberOfLines={1}>
           {d.pickup.address} → {d.dropoff.address}
         </Text>

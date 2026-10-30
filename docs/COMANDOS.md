@@ -34,7 +34,7 @@ Celular e computador precisam estar na mesma rede Wi-Fi. Teste no navegador do c
 | ------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
 | `curl -X POST localhost:3000/auth/otp/request -H 'content-type: application/json' -d '{"phone":"(83) 99999-0003"}'` | Pede o código de login. Em modo simulado o código vem na resposta (`devCode`) e no log da API. |
 
-Telefones do seed: admin `...0001`, passageira `...0002`, motorista aprovado `...0003`, pendente `...0004`, reprovado `...0005`, comerciante `...0006` (todos `+5583999990XXX`).
+Telefones do seed: admin `...0001`, passageira `...0002`, motorista aprovado `...0003`, pendente `...0004`, reprovado `...0005`, comerciante `...0006`, motorista de **carro** (mulher verificada) `...0007` (todos `+5583999990XXX`).
 
 | Comando                                                     | O que faz                                                                                                                                                                        |
 | ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

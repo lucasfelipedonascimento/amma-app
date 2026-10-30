@@ -21,6 +21,8 @@ export type ClientEventListener = (event: string, data: unknown) => void;
 
 export interface ClientValue {
   isMerchant: boolean;
+  /** Só quem tem o papel de passageiro pede corridas. */
+  isPassenger: boolean;
   realtime: RealtimeStatus;
   offline: boolean;
   /** Recebe os eventos do WebSocket (delivery.updated, payment.updated, driver.position). */
@@ -47,6 +49,7 @@ const POLL_MS = 5000;
 export function ClientProvider({ children }: { children: ReactNode }) {
   const { me } = useSession();
   const isMerchant = !!me?.roles.includes('COMERCIANTE');
+  const isPassenger = !!me?.roles.includes('PASSAGEIRO');
   const offline = useIsOffline();
   const [realtime, setRealtime] = useState<RealtimeStatus>('closed');
   const [deliveries, setDeliveries] = useState<ClientDelivery[] | null>(null);
@@ -111,6 +114,7 @@ export function ClientProvider({ children }: { children: ReactNode }) {
   const value = useMemo<ClientValue>(
     () => ({
       isMerchant,
+      isPassenger,
       realtime,
       offline,
       subscribe: (fn) => {
@@ -126,6 +130,7 @@ export function ClientProvider({ children }: { children: ReactNode }) {
     }),
     [
       isMerchant,
+      isPassenger,
       realtime,
       offline,
       deliveries,

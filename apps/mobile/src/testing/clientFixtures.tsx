@@ -47,6 +47,7 @@ export const pixPayment: PaymentInfo = {
 export function clientValue(over: Partial<ClientValue> = {}): ClientValue {
   return {
     isMerchant: false,
+    isPassenger: true,
     realtime: 'closed',
     offline: false,
     subscribe: jest.fn(() => jest.fn()),

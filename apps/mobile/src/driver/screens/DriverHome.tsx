@@ -7,6 +7,7 @@ import { ComparisonCard } from '../components/ComparisonCard';
 import { Card, Page } from '../components/layout';
 import { OfferCard } from '../components/OfferCard';
 import { OfflineBanner, WarnBanner } from '../components/states';
+import { RateCard } from '../../safety/RateCard';
 import { useDriver } from '../DriverProvider';
 
 /** Início: online/offline, ganhos do dia (com o comparativo de 25%) e o pedido da vez. */
@@ -68,13 +69,25 @@ export function DriverHome() {
 
         {d.completed ? (
           <Card style={s.done}>
-            <Text style={s.doneTitle}>Entrega concluída ✓</Text>
+            <Text style={s.doneTitle}>
+              {d.completed.rideId ? 'Corrida concluída ✓' : 'Entrega concluída ✓'}
+            </Text>
             <Text style={s.doneText}>
               Você recebeu {formatBRL(d.completed.workerNetCents)} de uma corrida de{' '}
               {formatBRL(d.completed.fareCents)}.
             </Text>
-            <Button title="Ok" kind="ghost" onPress={d.dismissCompleted} />
+            {d.completed.rideId ? null : (
+              <Button title="Ok" kind="ghost" onPress={d.dismissCompleted} />
+            )}
           </Card>
+        ) : null}
+        {d.completed?.rideId ? (
+          <RateCard
+            title="Como foi o passageiro?"
+            path={`/driver/deliveries/${d.completed.rideId}/rating`}
+            onRated={d.dismissCompleted}
+            onSkip={d.dismissCompleted}
+          />
         ) : null}
 
         {d.earnings ? (

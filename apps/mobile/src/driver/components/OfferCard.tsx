@@ -3,7 +3,8 @@ import { StyleSheet, Text, View } from 'react-native';
 import { formatBRL, offerBreakdown } from '@amma/shared';
 import { colors } from '../../theme';
 import { Button } from '../../ui';
-import { formatDistance, formatDuration, secondsUntil } from '../format';
+import { RIDE_VEHICLE_LABEL } from '@amma/shared';
+import { formatDistance, formatDuration, formatRating, secondsUntil } from '../format';
 import type { Offer } from '../types';
 import { Card, Row } from './layout';
 
@@ -26,6 +27,7 @@ export function OfferCard({
     return () => clearInterval(t);
   }, [offer.expiresAt]);
 
+  const ride = offer.kind === 'CORRIDA';
   const b = offerBreakdown(offer.fareCents, offer.estimatedNetCents);
   const assoc =
     b.associationRate === null
@@ -35,18 +37,32 @@ export function OfferCard({
   return (
     <Card style={s.card}>
       <View style={s.header}>
-        <Text style={s.title}>Novo pedido</Text>
+        <Text style={s.title}>{ride ? 'Nova corrida' : 'Novo pedido'}</Text>
         <Text testID="offer-timer" style={[s.timer, left <= 10 && { color: colors.red }]}>
           {left} s
         </Text>
       </View>
 
-      <Text style={s.label}>Coleta</Text>
+      {ride ? (
+        <View style={s.badges}>
+          {offer.vehicleType ? (
+            <Text style={s.badge}>{RIDE_VEHICLE_LABEL[offer.vehicleType]}</Text>
+          ) : null}
+          {offer.womenDriverOnly ? <Text style={s.badge}>Motorista mulher</Text> : null}
+        </View>
+      ) : null}
+      {ride && offer.passenger ? (
+        <Text style={s.meta} testID="offer-passenger">
+          Passageiro{offer.passenger.firstName ? `: ${offer.passenger.firstName}` : ''} ·{' '}
+          {formatRating(offer.passenger.rating)}
+        </Text>
+      ) : null}
+      <Text style={s.label}>{ride ? 'Embarque' : 'Coleta'}</Text>
       <Text style={s.address}>{offer.pickup.address}</Text>
-      <Text style={s.label}>Entrega</Text>
+      <Text style={s.label}>{ride ? 'Destino' : 'Entrega'}</Text>
       <Text style={s.address}>{offer.dropoff.address}</Text>
       <Text style={s.meta}>
-        {formatDistance(offer.distanceToPickupMeters)} até a coleta
+        {formatDistance(offer.distanceToPickupMeters)} até {ride ? 'o passageiro' : 'a coleta'}
         {offer.pickupEtaSeconds ? ` (${formatDuration(offer.pickupEtaSeconds)})` : ''} ·{' '}
         {formatDistance(offer.deliveryDistanceMeters)} de corrida
       </Text>
@@ -77,6 +93,17 @@ const s = StyleSheet.create({
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   title: { color: colors.red, fontWeight: '800', fontSize: 20 },
   timer: { color: colors.black, fontWeight: '800', fontSize: 20, fontVariant: ['tabular-nums'] },
+  badges: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
+  badge: {
+    backgroundColor: colors.cream,
+    color: colors.black,
+    fontWeight: '700',
+    fontSize: 12,
+    borderRadius: 10,
+    paddingVertical: 3,
+    paddingHorizontal: 10,
+    overflow: 'hidden',
+  },
   label: { color: colors.muted, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
   address: { color: colors.black, fontSize: 16, fontWeight: '600' },
   meta: { color: colors.muted, fontSize: 14 },

@@ -82,3 +82,12 @@ Código: `packages/shared/src/payment.ts`, `apps/api/src/payments`. O cliente pa
 - **Estorno é total e único:** `PAGO → ESTORNADO` uma vez só; o provedor recebe a mesma cobrança como chave, então repetir não devolve duas vezes.
 - **Entrega concluída:** sem estorno automático. Estornar exigiria reverter o fechamento no ledger (hoje só existe em memória no `shared`, ver seção 5) e decidir quem arca com o repasse já feito ao motorista.
 - **Relatório do comerciante:** gasto = soma de `fareCents` dos pedidos com pagamento `PAGO`; estornados aparecem à parte; Pix pendente/expirado não conta.
+
+## 7. Corridas de passageiro (Etapa 7)
+
+Código: `packages/shared/src/ride.ts`, `apps/api/src/rides`. **O dinheiro não muda**: a corrida entra no mesmo fechamento da seção 2–4 — taxa base 10%, taxa de associação 0/2/4%, cotas, ledger em partidas dobradas e pagamento/estorno da seção 6. Uma corrida de R$ 15,00 sem associação paga R$ 1,50 de taxa e R$ 13,50 ao motorista (testado).
+
+- **Preço:** `calculateFare` com a mesma fórmula (base + km + minuto, com piso), mas a tabela vem do **perfil** da corrida: `CORRIDA_CARRO` ou `CORRIDA_MOTO` (`ENTREGA` segue como antes). Cada perfil é versionado à parte (`PricingConfigVersion.profile`). A rota é a mesma para os dois tipos; só a tabela muda. **Os valores de exemplo (seed) são inventados**; os reais são da associação.
+- **Estimativa:** o passageiro vê o preço de cada tipo liberado antes de pedir; o pedido envia `expectedFareCents` e é recusado (409) se a tabela mudou.
+- **Cancelamento:** até o embarque (`A_CAMINHO_COLETA`) o passageiro cancela com estorno total; depois de embarcar só o motorista (`ENTREGA_IMPOSSIVEL`) ou o admin encerram. Segue sem multa nem ressarcimento ao motorista (pendência da Etapa 6, agora mais visível: o motorista que foi buscar o passageiro e ele cancelou não recebe nada).
+- **Ledger e ganhos:** corridas aparecem nos ganhos, no histórico e na carteira do motorista como qualquer pedido concluído.

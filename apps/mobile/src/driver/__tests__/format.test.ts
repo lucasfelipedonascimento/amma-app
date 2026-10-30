@@ -2,6 +2,7 @@ import {
   formatDateTime,
   formatDistance,
   formatDuration,
+  formatRating,
   parseReaisToCents,
   secondsUntil,
   weekdayLabel,
@@ -59,5 +60,16 @@ describe('parseReaisToCents', () => {
   it('texto sem número é inválido', () => {
     expect(parseReaisToCents('')).toBeNull();
     expect(parseReaisToCents('abc')).toBeNull();
+  });
+});
+
+describe('formatRating', () => {
+  it('sem notas, com poucas (só quantidade) e com média', async () => {
+    expect(formatRating(null)).toBe('sem avaliações ainda');
+    expect(formatRating({ average: null, count: 0 })).toBe('sem avaliações ainda');
+    expect(formatRating({ average: null, count: 1 })).toBe('1 avaliação');
+    expect(formatRating({ average: null, count: 2 })).toBe('2 avaliações');
+    expect(formatRating({ average: 4.6, count: 12 })).toBe('★ 4,6 (12 avaliações)');
+    expect(formatRating({ average: 5, count: 3 })).toBe('★ 5 (3 avaliações)');
   });
 });

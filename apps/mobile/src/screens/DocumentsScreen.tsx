@@ -1,27 +1,36 @@
 import * as ImagePicker from 'expo-image-picker';
 import { useState } from 'react';
 import { Text, View } from 'react-native';
-import type { DocumentType } from '@amma/shared';
+import { BASE_REQUIRED_DOCUMENTS, DOCUMENT_LABEL, type DocumentType } from '@amma/shared';
 import { ApiError, uploadFile } from '../api';
 import { colors } from '../theme';
 import { Button, ErrorText, Screen } from '../ui';
 
-const ITEMS: { type: DocumentType; title: string }[] = [
-  { type: 'CNH', title: 'CNH (frente e verso legíveis)' },
-  { type: 'DOCUMENTO_VEICULO', title: 'Documento do veículo (CRLV)' },
-  { type: 'FOTO', title: 'Foto do seu rosto' },
-];
+const TITLES: Partial<Record<DocumentType, string>> = {
+  CNH: 'CNH (frente e verso legíveis)',
+  DOCUMENTO_VEICULO: 'Documento do veículo (CRLV)',
+  FOTO: 'Foto do seu rosto',
+};
+const titleOf = (type: DocumentType) => TITLES[type] ?? DOCUMENT_LABEL[type];
 
-/** Envio dos documentos. Cada envio novo substitui o anterior na análise. */
+/**
+ * Envio dos documentos. Cada envio novo substitui o anterior na análise. Sem `types`, são os três
+ * do cadastro; com `types`, só os pedidos (ex.: os extras das regras municipais de corrida de passageiro).
+ */
 export function DocumentsScreen({
   vehicleId,
   sent,
   onDone,
+  types = BASE_REQUIRED_DOCUMENTS,
+  doneLabel = 'Ver estado da aprovação',
 }: {
   vehicleId: string;
   sent: DocumentType[];
   onDone: () => void;
+  types?: readonly DocumentType[];
+  doneLabel?: string;
 }) {
+  const ITEMS = types.map((type) => ({ type, title: titleOf(type) }));
   const [busy, setBusy] = useState<DocumentType | null>(null);
   // Erro de cada item aparece no próprio cartão (antes ficava no fim da tela, fora da vista).
   const [errors, setErrors] = useState<Partial<Record<DocumentType, string>>>({});
@@ -101,7 +110,7 @@ export function DocumentsScreen({
           />
         </View>
       ))}
-      <Button title="Ver estado da aprovação" kind="danger" onPress={onDone} />
+      <Button title={doneLabel} kind="danger" onPress={onDone} />
     </Screen>
   );
 }

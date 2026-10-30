@@ -31,17 +31,31 @@ async function driver(
   cpf: string,
   plate: string,
   docs: [DocumentType, ApprovalStatus, string?][],
+  opts: { vehicle?: 'MOTO' | 'CARRO'; woman?: boolean } = {},
 ) {
   const u = await user(phone, name, ['MOTORISTA']);
   await prisma.driverProfile.upsert({
     where: { userId: u.id },
     update: {},
-    create: { userId: u.id, fullName: name, cpf, birthDate: new Date('1990-05-20T00:00:00Z') },
+    create: {
+      userId: u.id,
+      fullName: name,
+      cpf,
+      birthDate: new Date('1990-05-20T00:00:00Z'),
+      // Exemplo da opção "motorista mulher": autodeclarada e já conferida.
+      ...(opts.woman ? { gender: 'FEMININO' as const, genderVerifiedAt: new Date() } : {}),
+    },
   });
   const v = await prisma.vehicle.upsert({
     where: { userId_plate: { userId: u.id, plate } },
     update: {},
-    create: { userId: u.id, type: 'MOTO', plate, model: 'Honda CG 160', year: 2022 },
+    create: {
+      userId: u.id,
+      type: opts.vehicle ?? 'MOTO',
+      plate,
+      model: opts.vehicle === 'CARRO' ? 'Chevrolet Onix' : 'Honda CG 160',
+      year: 2022,
+    },
   });
   await prisma.document.deleteMany({ where: { userId: u.id } });
   mkdirSync(uploadDir, { recursive: true });
@@ -80,8 +94,30 @@ async function pricing() {
   });
 }
 
+// Tabelas de EXEMPLO das corridas de passageiro (uma por tipo de veículo). Os valores reais são da associação.
+async function ridePricing() {
+  for (const [profile, base, perKm, perMinute, minimum] of [
+    ['CORRIDA_CARRO', 400, 180, 35, 900],
+    ['CORRIDA_MOTO', 250, 120, 25, 600],
+  ] as const)
+    await prisma.pricingConfigVersion.upsert({
+      where: { version: `dev-${profile.toLowerCase()}` },
+      update: {},
+      create: {
+        version: `dev-${profile.toLowerCase()}`,
+        profile,
+        effectiveFrom: new Date('2026-01-01T00:00:00Z'),
+        baseCents: base,
+        perKmCents: perKm,
+        perMinuteCents: perMinute,
+        minimumFareCents: minimum,
+      },
+    });
+}
+
 async function main() {
   await pricing();
+  await ridePricing();
   await user('+5583999990001', 'Admin Exemplo', ['ADMIN']);
   await user('+5583999990002', 'Passageira Exemplo', ['PASSAGEIRO']);
   await user('+5583999990006', 'Comerciante Exemplo', ['COMERCIANTE']);
@@ -99,8 +135,22 @@ async function main() {
     ['DOCUMENTO_VEICULO', 'APROVADO'],
     ['FOTO', 'APROVADO'],
   ]);
+  // Motorista de carro (corrida de passageiro) e mulher verificada. As regras municipais NÃO são
+  // semeadas: vale o padrão não confirmado (carro liberado, mototáxi desligado) até o admin publicar.
+  await driver(
+    '+5583999990007',
+    'Motorista Carro',
+    '39053344705',
+    'JKL2M34',
+    [
+      ['CNH', 'APROVADO'],
+      ['DOCUMENTO_VEICULO', 'APROVADO'],
+      ['FOTO', 'APROVADO'],
+    ],
+    { vehicle: 'CARRO', woman: true },
+  );
   console.log(
-    'Seed concluído. Telefones: admin ...0001, passageira ...0002, aprovado ...0003, pendente ...0004, reprovado ...0005, comerciante ...0006',
+    'Seed concluído. Telefones: admin ...0001, passageira ...0002, aprovado (moto) ...0003, pendente ...0004, reprovado ...0005, comerciante ...0006, motorista de carro (mulher verificada) ...0007',
   );
 }
 

@@ -59,6 +59,9 @@ export const DISPATCH_REASONS = {
   FORA_DO_RAIO: 'Fora do raio de despacho.',
   POSICAO_ANTIGA: 'Última posição conhecida é antiga demais.',
   NAO_APROVADO: 'Cadastro/documentos não aprovados.',
+  VEICULO_INELEGIVEL:
+    'Corrida de passageiro: nenhum veículo do motorista atende ao tipo pedido e às regras municipais.',
+  FORA_DA_PREFERENCIA: 'O passageiro pediu motorista mulher e o motorista não é mulher verificada.',
   OCUPADO: 'Já tem uma entrega em andamento ou uma oferta pendente.',
   JA_TENTADO: 'Já recebeu oferta deste pedido (recusou, expirou ou desistiu).',
 } as const;
@@ -67,6 +70,8 @@ export type DispatchReason = keyof typeof DISPATCH_REASONS;
 /** As regras em texto, na ordem em que são aplicadas (publicadas em GET /dispatch/rules). */
 export const DISPATCH_RULES: readonly string[] = [
   'Só recebem oferta motoristas ONLINE, com cadastro aprovado e posição recente.',
+  'Corrida de passageiro: só entra motorista com um veículo do tipo pedido que cumpra as regras municipais vigentes (idade do veículo, documentos).',
+  'Se o passageiro pediu motorista mulher, só entram motoristas mulheres verificadas pela associação.',
   'Motorista com entrega em andamento ou oferta pendente não recebe outra oferta.',
   'Só entram motoristas dentro do raio configurado, medido em linha reta até o ponto de coleta.',
   'A oferta vai para UM motorista por vez: o mais próximo. Empate de distância (em metros) vai para quem está online há mais tempo.',
@@ -99,6 +104,10 @@ export interface DispatchCandidate {
   alreadyTried: boolean;
   /** ISO 8601 UTC: desde quando está online (desempate). */
   onlineSince: string;
+  /** Corrida de passageiro: tem veículo do tipo pedido dentro das regras municipais. Omitido = true (entregas). */
+  vehicleOk?: boolean;
+  /** Passageiro pediu motorista mulher e este motorista atende. Omitido = true. */
+  preferenceOk?: boolean;
 }
 
 export interface DispatchChoice {
@@ -124,11 +133,15 @@ export function chooseCandidate(
           ? 'POSICAO_ANTIGA'
           : !c.approved
             ? 'NAO_APROVADO'
-            : c.busy
-              ? 'OCUPADO'
-              : c.alreadyTried
-                ? 'JA_TENTADO'
-                : null;
+            : c.vehicleOk === false
+              ? 'VEICULO_INELEGIVEL'
+              : c.preferenceOk === false
+                ? 'FORA_DA_PREFERENCIA'
+                : c.busy
+                  ? 'OCUPADO'
+                  : c.alreadyTried
+                    ? 'JA_TENTADO'
+                    : null;
     if (reason) excluded[reason] = (excluded[reason] ?? 0) + 1;
     else eligible.push(c);
   }

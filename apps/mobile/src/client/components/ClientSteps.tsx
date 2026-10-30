@@ -1,18 +1,19 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { colors } from '../../theme';
-import { CLIENT_STAGES, clientStage } from '../labels';
+import { CLIENT_STAGES, RIDE_STAGES, clientStage } from '../labels';
 import type { ClientDelivery } from '../types';
 
 /** As 4 etapas do pedido, do ponto de vista do cliente. */
 export function ClientSteps({
   delivery,
 }: {
-  delivery: Pick<ClientDelivery, 'status' | 'payment'>;
+  delivery: Pick<ClientDelivery, 'status' | 'payment' | 'kind'>;
 }) {
   const done = clientStage(delivery);
+  const stages = delivery.kind === 'CORRIDA' ? RIDE_STAGES : CLIENT_STAGES;
   return (
-    <View style={s.row} accessibilityLabel={`${done} de ${CLIENT_STAGES.length} etapas concluídas`}>
-      {CLIENT_STAGES.map((label, i) => {
+    <View style={s.row} accessibilityLabel={`${done} de ${stages.length} etapas concluídas`}>
+      {stages.map((label, i) => {
         const finished = i < done;
         const current = i === done;
         return (

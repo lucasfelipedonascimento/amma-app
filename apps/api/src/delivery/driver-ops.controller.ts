@@ -23,10 +23,12 @@ import { PushService } from '../push/push.service';
 import { LOCATION_CONSENT_VERSION } from '@amma/shared';
 import {
   AssociationRateDto,
+  BoardDto,
   ConsentDto,
   DeclineDto,
   LatLngDto,
   PushTokenDto,
+  RatingDto,
   RouteQuery,
 } from './dto';
 import { DriverAppService } from './driver-app.service';
@@ -100,8 +102,9 @@ export class DriverOpsController {
 
   @Post('deliveries/:id/picked-up')
   @HttpCode(200)
-  pickedUp(@Req() req: Req_, @Param('id', ParseUUIDPipe) id: string) {
-    return this.step(req, id, 'COLETADO');
+  pickedUp(@Req() req: Req_, @Param('id', ParseUUIDPipe) id: string, @Body() dto: BoardDto) {
+    // Corrida: `pin` é o PIN de embarque que o passageiro mostra; entrega ignora.
+    return this.deliveries.advance(req.user.id, id, 'COLETADO', dto?.pin);
   }
 
   @Post('deliveries/:id/en-route-dropoff')
@@ -120,6 +123,18 @@ export class DriverOpsController {
   @HttpCode(204)
   release(@Req() req: Req_, @Param('id', ParseUUIDPipe) id: string) {
     return this.dispatch.release(req.user.id, id);
+  }
+
+  /** O motorista avalia o passageiro (só corrida de passageiro, depois de concluída). */
+  @Post('deliveries/:id/rating')
+  rate(@Req() req: Req_, @Param('id', ParseUUIDPipe) id: string, @Body() dto: RatingDto) {
+    return this.deliveries.rate(req.user, id, dto, 'MOTORISTA_AVALIA_CLIENTE');
+  }
+
+  /** Quais veículos do motorista podem receber corridas de passageiro e o que falta, pelas regras vigentes. */
+  @Get('ride-eligibility')
+  rideEligibility(@Req() req: Req_) {
+    return this.app.rideEligibility(req.user.id);
   }
 
   @Get('wallet')

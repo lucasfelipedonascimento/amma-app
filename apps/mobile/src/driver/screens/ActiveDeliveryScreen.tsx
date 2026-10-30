@@ -1,15 +1,17 @@
+import { useState } from 'react';
 import { Alert, Linking, StyleSheet, Text, View } from 'react-native';
-import { formatBRL } from '@amma/shared';
+import { BOARDING_PIN_LENGTH, formatBRL, isValidBoardingPin } from '@amma/shared';
 import { colors } from '../../theme';
-import { Button, ErrorText } from '../../ui';
+import { Button, ErrorText, Field } from '../../ui';
+import { ReportCard } from '../../safety/ReportCard';
 import { EmergencyButton } from '../components/EmergencyButton';
 import { Card, Page } from '../components/layout';
 import { RouteMap } from '../components/RouteMap';
 import { OfflineBanner, WarnBanner } from '../components/states';
 import { StepProgress } from '../components/StepProgress';
 import { useDriver } from '../DriverProvider';
-import { formatDistance, formatDuration } from '../format';
-import { DELIVERY_STEPS, canRelease, completedSteps, nextStep } from '../steps';
+import { formatDistance, formatDuration, formatRating } from '../format';
+import { canRelease, completedSteps, nextStep, stepsFor } from '../steps';
 import { useRouteInfo } from '../useRouteInfo';
 
 /** Abre o app de mapas do celular com a rota até o destino (Google Maps, Waze, Apple Mapas...). */
@@ -18,21 +20,31 @@ const openNavigation = (lat: number, lng: number) =>
     `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`,
   );
 
-/** Entrega em andamento: mapa com a rota, 4 etapas, botão do próximo passo e emergência. */
+/**
+ * Entrega ou corrida em andamento: mapa com a rota, 4 etapas, botão do próximo passo e emergência.
+ * Na corrida, o embarque só é confirmado com o PIN que o passageiro mostra.
+ */
 export function ActiveDeliveryScreen() {
   const d = useDriver();
   const { route, error: routeError } = useRouteInfo(d.active, d.position);
+  const [pin, setPin] = useState('');
+  const [reporting, setReporting] = useState(false);
   const a = d.active;
   if (!a) return null;
 
-  const step = nextStep(a.status);
+  const ride = a.kind === 'CORRIDA';
+  const step = nextStep(a.status, a.kind);
   const target = route?.target ?? (completedSteps(a.status) < 2 ? 'COLETA' : 'ENTREGA');
   const place = target === 'COLETA' ? a.pickup : a.dropoff;
+  const needsPin = ride && step?.reaches === 'COLETADO';
+  const pinOk = !needsPin || isValidBoardingPin(pin);
 
   const confirmRelease = () =>
     Alert.alert(
       'Não consigo seguir',
-      'O pedido volta para a fila e outro motorista recebe. Você não é punido.',
+      ride
+        ? 'A corrida volta para a fila e outro motorista recebe. Você não é punido.'
+        : 'O pedido volta para a fila e outro motorista recebe. Você não é punido.',
       [
         { text: 'Voltar', style: 'cancel' },
         { text: 'Liberar pedido', style: 'destructive', onPress: () => void d.release() },
@@ -55,7 +67,15 @@ export function ActiveDeliveryScreen() {
         ) : null}
 
         <Card>
-          <Text style={s.label}>{target === 'COLETA' ? 'Ir buscar em' : 'Levar até'}</Text>
+          <Text style={s.label}>
+            {target === 'COLETA'
+              ? ride
+                ? 'Ir buscar o passageiro em'
+                : 'Ir buscar em'
+              : ride
+                ? 'Levar o passageiro até'
+                : 'Levar até'}
+          </Text>
           <Text style={s.address} testID="target-address">
             {place.address}
           </Text>
@@ -67,6 +87,12 @@ export function ActiveDeliveryScreen() {
             {formatBRL(a.fareCents)}
           </Text>
           {a.notes ? <Text style={s.meta}>Obs.: {a.notes}</Text> : null}
+          {ride && a.passenger ? (
+            <Text style={s.meta} testID="passenger-line">
+              Passageiro{a.passenger.firstName ? `: ${a.passenger.firstName}` : ''} ·{' '}
+              {formatRating(a.passenger.rating)}
+            </Text>
+          ) : null}
           <Button
             title="Abrir no app de mapas"
             kind="ghost"
@@ -75,16 +101,34 @@ export function ActiveDeliveryScreen() {
         </Card>
 
         <Card>
-          <StepProgress done={completedSteps(a.status)} />
+          <StepProgress done={completedSteps(a.status)} kind={a.kind} />
         </Card>
+
+        {needsPin ? (
+          <Card>
+            <Text style={s.label}>PIN de embarque</Text>
+            <Text style={s.meta}>
+              Peça ao passageiro o PIN que aparece no app dele. É assim que você confirma quem está
+              embarcando.
+            </Text>
+            <Field
+              label="PIN do passageiro"
+              value={pin}
+              onChangeText={(v) => setPin(v.replace(/\D/g, '').slice(0, BOARDING_PIN_LENGTH))}
+              keyboardType="number-pad"
+              maxLength={BOARDING_PIN_LENGTH}
+              placeholder="0000"
+            />
+          </Card>
+        ) : null}
 
         <ErrorText message={d.actionError} />
         {step ? (
           <Button
             title={step.action}
-            onPress={() => void d.advance()}
+            onPress={() => void (needsPin ? d.advance(pin) : d.advance())}
             loading={d.busy}
-            disabled={d.offline}
+            disabled={d.offline || !pinOk}
           />
         ) : null}
         {canRelease(a.status) ? (
@@ -95,10 +139,17 @@ export function ActiveDeliveryScreen() {
             disabled={d.busy}
           />
         ) : null}
-        <EmergencyButton />
+        <EmergencyButton deliveryId={a.id} />
+        {ride ? (
+          reporting ? (
+            <ReportCard deliveryId={a.id} onClose={() => setReporting(false)} />
+          ) : (
+            <Button title="Denunciar" kind="ghost" onPress={() => setReporting(true)} />
+          )
+        ) : null}
         <Text style={s.hint}>
-          {DELIVERY_STEPS.length} etapas: confirme cada uma ao concluir. O cliente acompanha você
-          pelo mapa.
+          {stepsFor(a.kind).length} etapas: confirme cada uma ao concluir.{' '}
+          {ride ? 'O passageiro' : 'O cliente'} acompanha você pelo mapa.
         </Text>
       </Page>
     </View>

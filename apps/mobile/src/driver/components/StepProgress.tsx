@@ -1,15 +1,14 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { colors } from '../../theme';
-import { DELIVERY_STEPS } from '../steps';
+import type { DeliveryKind } from '@amma/shared';
+import { stepsFor } from '../steps';
 
-/** As 4 etapas da entrega. `done` = quantas já foram concluídas; a seguinte fica destacada. */
-export function StepProgress({ done }: { done: number }) {
+/** As 4 etapas da entrega ou da corrida. `done` = quantas já foram concluídas; a seguinte fica destacada. */
+export function StepProgress({ done, kind }: { done: number; kind?: DeliveryKind }) {
+  const steps = stepsFor(kind);
   return (
-    <View
-      style={s.row}
-      accessibilityLabel={`${done} de ${DELIVERY_STEPS.length} etapas concluídas`}
-    >
-      {DELIVERY_STEPS.map((step, i) => {
+    <View style={s.row} accessibilityLabel={`${done} de ${steps.length} etapas concluídas`}>
+      {steps.map((step, i) => {
         const finished = i < done;
         const current = i === done;
         return (

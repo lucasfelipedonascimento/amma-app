@@ -45,3 +45,10 @@ describe('recibo', () => {
     expect(() => buildReceipt({ ...base, payment: null })).toThrow();
   });
 });
+
+describe('recibo de corrida', () => {
+  it('o aviso fala de corrida; sem kind continua falando de entrega', () => {
+    expect(buildReceipt({ ...base, kind: 'CORRIDA' }).notice).toMatch(/corrida/);
+    expect(buildReceipt(base).notice).toMatch(/entrega/);
+  });
+});

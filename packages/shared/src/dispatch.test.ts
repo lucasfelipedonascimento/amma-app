@@ -117,3 +117,42 @@ describe('geo', () => {
     expect(isValidPoint(null)).toBe(false);
   });
 });
+
+describe('chooseCandidate — corrida de passageiro', () => {
+  it('descarta quem não tem veículo elegível e conta o motivo', () => {
+    const r = chooseCandidate(
+      [
+        cand({ driverId: 'perto-mas-sem-carro', distanceMeters: 100, vehicleOk: false }),
+        cand({ driverId: 'longe-com-carro', distanceMeters: 900, vehicleOk: true }),
+      ],
+      cfg,
+    );
+    expect(r.chosen?.driverId).toBe('longe-com-carro');
+    expect(r.excluded).toEqual({ VEICULO_INELEGIVEL: 1 });
+  });
+
+  it('motorista mulher pedida: só quem atende a preferência, mesmo mais longe', () => {
+    const r = chooseCandidate(
+      [
+        cand({ driverId: 'a', distanceMeters: 100, preferenceOk: false }),
+        cand({ driverId: 'b', distanceMeters: 800, preferenceOk: true }),
+      ],
+      cfg,
+    );
+    expect(r.chosen?.driverId).toBe('b');
+    expect(r.excluded).toEqual({ FORA_DA_PREFERENCIA: 1 });
+  });
+
+  it('sem ninguém que atenda: sem escolha, com os motivos', () => {
+    const r = chooseCandidate(
+      [cand({ driverId: 'a', preferenceOk: false }), cand({ driverId: 'b', vehicleOk: false })],
+      cfg,
+    );
+    expect(r.chosen).toBeNull();
+    expect(r.excluded).toEqual({ FORA_DA_PREFERENCIA: 1, VEICULO_INELEGIVEL: 1 });
+  });
+
+  it('campos omitidos (entregas) não restringem', () => {
+    expect(chooseCandidate([cand({ driverId: 'a' })], cfg).chosen?.driverId).toBe('a');
+  });
+});

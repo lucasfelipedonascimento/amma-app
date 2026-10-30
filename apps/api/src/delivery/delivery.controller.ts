@@ -39,7 +39,7 @@ export class DeliveryController {
   @Get()
   @Roles('PASSAGEIRO', 'COMERCIANTE')
   list(@Req() req: Req_, @Query() q: ListDeliveriesQuery) {
-    return this.deliveries.list(req.user.id, q.status, q.limit);
+    return this.deliveries.list(req.user.id, q.status, q.limit, q.kind);
   }
 
   @Post(':id/rating')

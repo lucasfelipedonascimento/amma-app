@@ -13,6 +13,9 @@ jest.mock('expo-location', () => ({
   getBackgroundPermissionsAsync: jest.fn(async () => ({ granted: true, status: 'granted' })),
   requestForegroundPermissionsAsync: jest.fn(async () => ({ granted: true, status: 'granted' })),
   requestBackgroundPermissionsAsync: jest.fn(async () => ({ granted: true, status: 'granted' })),
+  getLastKnownPositionAsync: jest.fn(async () => ({
+    coords: { latitude: -7.115, longitude: -34.861 },
+  })),
   getCurrentPositionAsync: jest.fn(async () => ({
     coords: { latitude: -7.115, longitude: -34.861 },
   })),

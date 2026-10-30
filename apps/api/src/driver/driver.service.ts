@@ -4,7 +4,13 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { driverApproval, isValidCpf, isValidVehicleYear, normalizePlate } from '@amma/shared';
+import {
+  driverApproval,
+  isValidCpf,
+  isValidVehicleYear,
+  normalizePlate,
+  type Gender,
+} from '@amma/shared';
 import { EXTENSION, sniffMime } from '../common/file-type';
 import { StorageService } from '../common/storage.service';
 import { PrismaService } from '../prisma.service';
@@ -30,16 +36,40 @@ export class DriverService {
     const cpf = dto.cpf.replace(/\D/g, '');
     const data = { fullName: dto.fullName.trim(), cpf, birthDate: birth };
     try {
+      const genderData = dto.gender === undefined ? {} : await this.genderPatch(userId, dto.gender);
       return await this.prisma.driverProfile.upsert({
         where: { userId },
-        create: { userId, ...data },
-        update: data,
+        create: { userId, ...data, ...genderData },
+        update: { ...data, ...genderData },
       });
     } catch (e) {
       if ((e as { code?: string }).code === 'P2002')
         throw new ConflictException('CPF já cadastrado');
       throw e;
     }
+  }
+
+  /** Mudar o gênero declarado derruba a verificação: a associação precisa conferir de novo. */
+  private async genderPatch(userId: string, gender: Gender) {
+    const previous = await this.prisma.driverProfile.findUnique({
+      where: { userId },
+      select: { gender: true },
+    });
+    return gender === previous?.gender
+      ? {}
+      : { gender, genderVerifiedAt: null, genderVerifiedById: null };
+  }
+
+  async setGender(userId: string, gender: Gender) {
+    const exists = await this.prisma.driverProfile.count({ where: { userId } });
+    if (!exists) throw new ConflictException('Preencha seus dados de motorista primeiro');
+    const patch = await this.genderPatch(userId, gender);
+    const p = await this.prisma.driverProfile.update({
+      where: { userId },
+      data: patch,
+      select: { gender: true, genderVerifiedAt: true },
+    });
+    return { gender: p.gender, verified: !!p.genderVerifiedAt };
   }
 
   async addVehicle(userId: string, dto: VehicleDto) {

@@ -236,3 +236,49 @@ Para ver o fluxo no celular: `docs/MOBILE.md` roteiro F. Nenhuma variável nova 
 - Relatório do comerciante é só em tela (sem exportar CSV/PDF). Um usuário COMERCIANTE + PASSAGEIRO vê o mesmo histórico (é a mesma conta).
 - A rotina de Pix vencido/estorno roda no mesmo `tick` do despacho (`DISPATCH_TICK_MS`); com `0` (só testes) ela não roda sozinha.
 - Mesmas pendências da Etapa 5 sobre fonte Outfit, ícone/splash, leitor de tela e tema escuro; `Field` agora tem `accessibilityLabel`, mas o resto da acessibilidade não foi revisado.
+
+## Etapa 7 — Corridas de passageiro (carro e moto) ✅ (sem teste em celular real)
+
+**Feito** (detalhes em `docs/API.md` seção 13, `docs/DECISOES.md`, `docs/LGPD.md` e `docs/MOBILE.md` roteiro G)
+
+- **Pedir corrida:** origem, destino, tipo de veículo → **estimativa por tipo** (preço, tempo de viagem e quanto o motorista mais próximo leva para chegar) → pagamento (Pix/cartão de teste) → confirmação. O preço mostrado é o cobrado (`expectedFareCents`). Tipos que a configuração municipal não libera nem aparecem.
+- **Reaproveitamento:** a corrida é um `Delivery` com `kind = CORRIDA` — mesmos estados, oferta, aceite, pagamento, estorno, cancelamento, recibo e fechamento no ledger (10% + associação 0/2/4%, cotas). Ajustes: tabela de preço por perfil (`CORRIDA_CARRO`/`CORRIDA_MOTO`), despacho só para quem tem veículo do tipo pedido dentro das regras municipais, textos por tipo, ganhos/histórico do motorista incluem corridas.
+- **Segurança:**
+  - **Verificação:** o passageiro vê nome, nota, **foto, placa e modelo** do veículo que aceitou e um **PIN de embarque**; o motorista só embarca digitando o PIN (5 tentativas).
+  - **Compartilhar viagem** com um contato por link (sem login, só o essencial, revogável, expira 30 min depois).
+  - **Emergência** (passageiro e motorista): registra alerta com a posição, avisa os admins em tempo real e liga para 190/192/193 (o aviso à associação falhar não impede a ligação).
+  - **Motorista mulher:** autodeclaração + conferência da associação; quando pedido, só elas recebem — sem cair em outro motorista.
+  - **Avaliação mútua:** passageiro avalia motorista e motorista avalia passageiro; cada um vê só a média (a partir de 3 notas) do outro.
+  - **Denúncia** com categorias, ligada à corrida (o denunciado é sempre a outra parte), resposta da associação visível a quem denunciou, fila do admin com graves primeiro.
+  - **Registro da viagem:** trajeto do veículo gravado só nas corridas, guardado 90 dias (exceto com denúncia/alerta), acesso do admin auditado.
+- **Regras municipais como configuração:** `MunicipalRulesVersion` (idade máxima do veículo e idade mínima do motorista por tipo, documentos exigidos — inclusive novos: antecedentes, licença municipal, seguro —, avisos ao passageiro, mototáxi ligado/desligado, opção motorista mulher), versionadas, com vigência, publicadas por `POST /admin/municipal-rules`. Sem versão vale um padrão **marcado como não confirmado**: carro liberado, **mototáxi desligado**.
+- **App:** aba **Corrida** do passageiro (pedir, acompanhar com cartão do motorista/PIN/compartilhar/emergência/denunciar/avaliar, corridas recentes); motorista: oferta e corrida com passageiro e nota, campo de PIN, emergência, denúncia, avaliação do passageiro e, na aba Conta, **habilitação por veículo**, envio dos documentos que faltam e declaração de gênero.
+- **Testes:** shared **165** (+32), api **55** unitários e **162** de integração (+73: estimativa, despacho por tipo/regra/preferência, PIN, ledger de corrida, avaliação mútua, link público, emergência, denúncia, registro/retenção/auditoria, regras municipais, perfis de preço, exclusão de conta), mobile **193** (+43).
+
+**Como rodar**
+
+```
+pnpm install && pnpm db:up
+cd apps/api && pnpm prisma:deploy && pnpm db:seed && cd ../..     # migração nova: rides_safety_municipal
+pnpm build && pnpm test && pnpm lint && pnpm typecheck
+pnpm --filter @amma/api test:int
+pnpm --filter @amma/mobile test
+```
+
+Variável nova: `PUBLIC_BASE_URL` (links de compartilhar; padrão `http://localhost:3000`). O seed ganhou tabelas de preço **de exemplo** das corridas e o motorista de carro `+5583999990007` (mulher verificada). O mototáxi nasce desligado: para testar moto, publique uma versão das regras com `moto.enabled: true` (`POST /admin/municipal-rules`, exemplo em `docs/API.md` 13.6). Roteiro no celular: `docs/MOBILE.md` roteiro G.
+
+**Falta / pendências**
+
+- **A lei de João Pessoa não foi informada e não foi inventada.** Idade máxima do veículo (10 carro / 8 moto), idade mínima do motorista (21) e a lista de documentos do padrão são **exemplos**. **Precisa da associação/jurídico:** o que a legislação municipal exige de carro e de mototáxi (se o mototáxi pode operar por app, idade do veículo, documentos, seguro, licença/cadastro na prefeitura), e então publicar a versão. Até lá a API e o app avisam “regras NÃO confirmadas” e a moto fica desligada.
+- **“Verificação da placa e do motorista” é documental + visual.** Aprovamos o CRLV/CNH/foto por revisão do admin e o passageiro confere foto, placa e PIN. **Não há consulta a base oficial** (Senatran/Detran, antecedentes) nem reconhecimento facial/“selfie na hora” para provar que quem dirige é quem aprovou. Se a associação quiser, é integração com parceiro.
+- **Emergência sem equipe por trás:** o alerta chega ao admin por WebSocket e fica listado em `GET /admin/safety/alerts`, mas **não existe painel nem plantão**; ninguém é acionado se não houver um admin conectado/olhando. A associação precisa definir quem atende e em quanto tempo (e talvez notificar por SMS/WhatsApp/e-mail). O link do contato mostra a faixa de emergência, mas a AMMA não liga/avisa o contato por conta própria.
+- **Compartilhar viagem:** o link vai pelo menu do sistema; **o app ainda não tem botão de revogar** (a API tem) nem lista de links. Posição no link só atualiza a cada ~10 s e depende do motorista enviando posição.
+- **Painel web do admin continua inexistente:** denúncias, alertas, registro da viagem, verificação de gênero, regras municipais e revisão dos documentos novos são **só por API**.
+- **Motorista mulher:** como a associação confere a autodeclaração (documento? presencial?) é decisão dela; hoje é um `POST` do admin. Pode demorar mais para achar motorista: talvez `maxSearchSeconds` maior para esses pedidos. A opção é aberta a qualquer passageiro.
+- **Avaliação não tem efeito:** a nota só informa (média a partir de 3 notas); não entra no despacho, não bloqueia ninguém e não há tratamento de nota baixa/denúncia reincidente (suspender motorista não existe).
+- **Cancelamento sem multa** (herdado): se o passageiro cancela depois de o motorista ter ido buscá-lo, o motorista não recebe nada e o passageiro recebe estorno total. Mais sentido numa corrida do que numa entrega; regra a definir com a associação.
+- **Registro da viagem:** 90 dias é palpite; confirmar com o jurídico, atualizar a política de privacidade (hoje o aviso só está na tela da corrida) e decidir se vira consentimento explícito. Só grava com o app do motorista enviando posição.
+- **Rota/ETA:** com `ROUTE_PROVIDER=simulated` a rota é uma reta (tempo irreal); ETA e preço reais exigem Mapbox/Google com chave. A tela do passageiro mostra o ETA só na estimativa inicial, não um “chega em X min” ao vivo.
+- **Nada foi testado em aparelho físico:** foto do motorista (`Image` com cabeçalho `Authorization` no Android), menu de compartilhar, ligação de emergência, mapa e geocodificação. Segue o roteiro G.
+- Herdadas: endereço sem autocomplete, sem push para o passageiro, sem estorno de corrida concluída/disputa, sem fonte Outfit/ícone/tema escuro, WebSocket em memória (1 instância), sem provedor de pagamento real.
+- Limpeza futura: remover `Ride`/`QuotaAccount`/`QuotaEntry` (sem uso) e, se valer o esforço, renomear `Delivery` para algo neutro.

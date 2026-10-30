@@ -417,8 +417,9 @@ describe('pagamento, recibo, avaliação e comerciante', () => {
       expect((await t.post(`/deliveries/${d.id}/rating`, client.token, { stars: 1 })).status).toBe(
         409,
       );
-      const stored = await t.prisma.rating.findUniqueOrThrow({ where: { deliveryId: d.id } });
-      expect(stored.driverId).toBe(driver.id);
+      const stored = await t.prisma.rating.findFirstOrThrow({ where: { deliveryId: d.id } });
+      expect(stored.rateeId).toBe(driver.id);
+      expect(stored.direction).toBe('CLIENTE_AVALIA_MOTORISTA');
     });
 
     it('estranho e motorista não avaliam', async () => {
@@ -436,7 +437,7 @@ describe('pagamento, recibo, avaliação e comerciante', () => {
       const id = await t.runToDelivered(client, driver);
       await expect(
         t.prisma.rating.create({
-          data: { deliveryId: id, authorId: client.id, driverId: driver.id, stars: 9 },
+          data: { deliveryId: id, authorId: client.id, rateeId: driver.id, stars: 9 },
         }),
       ).rejects.toThrow();
     });

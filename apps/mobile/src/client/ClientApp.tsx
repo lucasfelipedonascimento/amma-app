@@ -7,14 +7,15 @@ import { ClientAccountScreen } from './screens/ClientAccountScreen';
 import { MerchantScreen } from './screens/MerchantScreen';
 import { NewDeliveryScreen } from './screens/NewDeliveryScreen';
 import { OrdersScreen } from './screens/OrdersScreen';
+import { RideScreen } from './screens/RideScreen';
 import { ReceiptScreen } from './screens/ReceiptScreen';
 import { ReportScreen } from './screens/ReportScreen';
 import { TrackingScreen } from './screens/TrackingScreen';
 
-type TabKey = 'pedir' | 'pedidos' | 'loja' | 'relatorio' | 'conta';
+type TabKey = 'pedir' | 'corrida' | 'pedidos' | 'loja' | 'relatorio' | 'conta';
 type Overlay = { kind: 'tracking'; id: string } | { kind: 'receipt'; id: string } | null;
 
-/** App de quem pede entregas (passageiro/cliente e comerciante). */
+/** App de quem pede entregas e corridas (passageiro/cliente e comerciante). */
 export function ClientApp() {
   return (
     <ClientProvider>
@@ -24,7 +25,7 @@ export function ClientApp() {
 }
 
 export function ClientTabs() {
-  const { isMerchant, deliveries } = useClient();
+  const { isMerchant, isPassenger, deliveries } = useClient();
   const [tab, setTab] = useState<TabKey>('pedir');
   const [overlay, setOverlay] = useState<Overlay>(null);
 
@@ -39,7 +40,8 @@ export function ClientTabs() {
   }, [overlay]);
 
   const tabs = [
-    { key: 'pedir' as const, label: 'Pedir' },
+    { key: 'pedir' as const, label: 'Entrega' },
+    ...(isPassenger ? [{ key: 'corrida' as const, label: 'Corrida' }] : []),
     {
       key: 'pedidos' as const,
       label: 'Pedidos',
@@ -78,6 +80,7 @@ export function ClientTabs() {
                 onOpenStore={() => setTab('loja')}
               />
             )}
+            {tab === 'corrida' && <RideScreen onOpen={open} />}
             {tab === 'pedidos' && <OrdersScreen onOpen={open} />}
             {tab === 'loja' && <MerchantScreen />}
             {tab === 'relatorio' && <ReportScreen />}

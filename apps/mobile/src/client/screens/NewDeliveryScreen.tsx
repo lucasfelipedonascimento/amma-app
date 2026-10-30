@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text } from 'react-native';
-import { formatBRL, cardBrand, parseCardExpiry, type PaymentMethod } from '@amma/shared';
+import { StyleSheet, Text } from 'react-native';
+import { formatBRL, type PaymentMethod } from '@amma/shared';
 import { api } from '../../api';
 import { errorMessage } from '../../errors';
 import { colors } from '../../theme';
@@ -9,10 +9,10 @@ import { Card, Heading, Page, Row } from '../../driver/components/layout';
 import { OfflineBanner } from '../../driver/components/states';
 import { formatDistance, formatDuration } from '../../driver/format';
 import { geocode, myPlace } from '../address';
-import { CardForm, EMPTY_CARD, cardProblem, type CardFields } from '../components/CardForm';
+import { EMPTY_CARD, type CardFields } from '../components/CardForm';
+import { PaymentSection, buildPayment } from '../components/PaymentSection';
 import { DeliveryMap } from '../components/DeliveryMap';
 import { useClient } from '../ClientProvider';
-import { METHOD_LABEL } from '../labels';
 import type { ClientDelivery, Place, Quote } from '../types';
 
 const newKey = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
@@ -101,21 +101,9 @@ export function NewDeliveryScreen({
   const confirm = async () => {
     if (!resolved || !quote) return;
     setError(null);
-    let payment: { method: PaymentMethod; cardToken?: string };
     setBusy(true);
     try {
-      if (method === 'CARTAO') {
-        const problem = cardProblem(card);
-        if (problem) return setError(problem);
-        if (!paymentConfig?.sandbox)
-          return setError('Pagamento com cartão indisponível no momento. Use o Pix.');
-        // Sandbox: a API faz o papel do SDK do provedor. Com provedor real, o token vem do SDK no app.
-        const exp = parseCardExpiry(card.expiry)!;
-        const t = await api<{ token: string }>('/payments/sandbox/card-tokens', {
-          body: { number: card.number, expMonth: exp.month, expYear: exp.year, cvv: card.cvv },
-        });
-        payment = { method, cardToken: t.token };
-      } else payment = { method };
+      const payment = await buildPayment(method, card, paymentConfig);
       const created = await api<ClientDelivery>('/deliveries', {
         body: {
           ...resolved,
@@ -152,29 +140,13 @@ export function NewDeliveryScreen({
           ) : null}
         </Card>
 
-        <Text style={s.section}>Como você quer pagar?</Text>
-        {(['PIX', 'CARTAO'] as const).map((m) => (
-          <Pressable
-            key={m}
-            onPress={() => setMethod(m)}
-            accessibilityRole="radio"
-            accessibilityState={{ selected: method === m }}
-            style={[s.option, method === m && s.optionOn]}
-          >
-            <Text style={s.optionTitle}>{METHOD_LABEL[m]}</Text>
-            <Text style={s.muted}>
-              {m === 'PIX'
-                ? 'Pague no app do seu banco; o motorista é chamado ao confirmar.'
-                : 'Cobrado na hora.'}
-            </Text>
-          </Pressable>
-        ))}
-        {method === 'CARTAO' ? (
-          <Card>
-            <CardForm value={card} onChange={setCard} sandbox={!!paymentConfig?.sandbox} />
-            {card.number ? <Text style={s.muted}>Bandeira: {cardBrand(card.number)}</Text> : null}
-          </Card>
-        ) : null}
+        <PaymentSection
+          method={method}
+          onMethod={setMethod}
+          card={card}
+          onCard={setCard}
+          sandbox={!!paymentConfig?.sandbox}
+        />
         <ErrorText message={error} />
         <Button
           title={`Confirmar e pagar ${formatBRL(quote.fareCents)}`}
@@ -228,15 +200,4 @@ export function NewDeliveryScreen({
 
 const s = StyleSheet.create({
   muted: { color: colors.muted, fontSize: 14 },
-  section: { color: colors.black, fontWeight: '800', fontSize: 16, marginTop: 6 },
-  option: {
-    backgroundColor: colors.white,
-    borderRadius: 12,
-    padding: 14,
-    borderWidth: 2,
-    borderColor: colors.border,
-    gap: 2,
-  },
-  optionOn: { borderColor: colors.red },
-  optionTitle: { color: colors.black, fontWeight: '700', fontSize: 17 },
 });
