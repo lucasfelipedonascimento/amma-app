@@ -1,6 +1,6 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { WsAdapter } from '@nestjs/platform-ws';
-import { Test } from '@nestjs/testing';
+import { Test, type TestingModuleBuilder } from '@nestjs/testing';
 import {
   DEFAULT_MUNICIPAL_RULES,
   LOCATION_CONSENT_VERSION,
@@ -43,8 +43,10 @@ export class TestApp {
     readonly wsUrl: string,
   ) {}
 
-  static async start() {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+  /** `override` troca provedores (ex.: um leitor de documentos falso) antes de compilar. */
+  static async start(override?: (b: TestingModuleBuilder) => TestingModuleBuilder) {
+    const builder = Test.createTestingModule({ imports: [AppModule] });
+    const moduleRef = await (override ? override(builder) : builder).compile();
     const app = moduleRef.createNestApplication({ rawBody: true });
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }));
     app.useWebSocketAdapter(new WsAdapter(app));

@@ -14,6 +14,7 @@ import {
 import { EXTENSION, hasActivePdfContent, sniffMime } from '../common/file-type';
 import { StorageService } from '../common/storage.service';
 import { PrismaService } from '../prisma.service';
+import { VerificationService } from '../verification/verification.service';
 import { DriverProfileDto, UploadDocumentDto, VehicleDto } from './dto';
 
 export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
@@ -26,6 +27,7 @@ export class DriverService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
+    private readonly verification: VerificationService,
   ) {}
 
   async saveProfile(userId: string, dto: DriverProfileDto) {
@@ -126,7 +128,7 @@ export class DriverService {
     if ((await this.prisma.document.count({ where: { userId } })) >= MAX_DOCUMENTS_PER_USER)
       throw new ConflictException('Limite de documentos enviados atingido. Fale com a associação.');
     const storageKey = await this.storage.save(file.buffer, EXTENSION[mime]);
-    return this.prisma.document.create({
+    const doc = await this.prisma.document.create({
       data: {
         userId,
         type: dto.type,
@@ -137,6 +139,9 @@ export class DriverService {
       },
       select: PUBLIC_DOC,
     });
+    // Leitura automática em segundo plano: o motorista não espera e uma falha não derruba o envio.
+    this.verification.enqueue(doc.id);
+    return doc;
   }
 
   /** Resumo para a tela de aprovação do app. */

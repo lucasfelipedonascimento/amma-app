@@ -6,3 +6,8 @@ dist
 .env
 *.log
 uploads
+
+.venv
+__pycache__
+.pytest_cache
+*.pyc

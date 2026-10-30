@@ -315,9 +315,32 @@ model Document {
   user            User           @relation("DocumentOwner", fields: [userId], references: [id], onDelete: Cascade)
   vehicle         Vehicle?       @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
   reviewedBy      User?          @relation("DocumentReviewer", fields: [reviewedById], references: [id])
+  verification    DocumentVerification?
 
   @@index([userId, type])
   @@index([status])
+}
+
+enum VerificationStatus {
+  CONCLUIDA
+  // Leitor fora do ar ou arquivo ilegível: o documento segue para análise manual normalmente.
+  INDISPONIVEL
+}
+
+// Resultado da leitura automática (serviço Python) de CNH e CRLV. É só uma recomendação para o painel,
+// salvo DOC_AUTO_APPROVE. LGPD: guarda campos MASCARADOS (CPF/RENAVAM/registro parciais), nunca o texto lido.
+model DocumentVerification {
+  documentId     String             @id
+  status         VerificationStatus
+  // APROVAR | REVISAR (null quando INDISPONIVEL)
+  recommendation String?
+  findings       Json
+  extracted      Json
+  engine         String?
+  autoApproved   Boolean            @default(false)
+  createdAt      DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime           @updatedAt @db.Timestamptz(3)
+  document       Document           @relation(fields: [documentId], references: [id], onDelete: Cascade)
 }
 
 model Ride {

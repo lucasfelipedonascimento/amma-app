@@ -38,4 +38,18 @@ describe('assertProductionConfig', () => {
   ])('recusa: %s', (_n, patch) => {
     expect(() => assertProductionConfig({ ...ok, ...patch })).toThrow(/insegura/);
   });
+  it('leitor de documentos exige URL e token forte; aprovação automática exige o leitor', () => {
+    const http = { ...ok, DOC_READER_MODE: 'http' };
+    expect(() => assertProductionConfig(http)).toThrow(/DOC_READER_URL.*DOC_READER_TOKEN/);
+    const url = { ...http, DOC_READER_URL: 'http://leitor:8001' };
+    expect(() => assertProductionConfig({ ...url, DOC_READER_TOKEN: 'curto' })).toThrow(
+      /DOC_READER_TOKEN/,
+    );
+    expect(() =>
+      assertProductionConfig({ ...url, DOC_READER_TOKEN: 't'.repeat(32) }),
+    ).not.toThrow();
+    expect(() => assertProductionConfig({ ...ok, DOC_AUTO_APPROVE: 'true' })).toThrow(
+      /DOC_AUTO_APPROVE/,
+    );
+  });
 });

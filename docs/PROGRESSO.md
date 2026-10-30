@@ -487,3 +487,13 @@ Foco combinado: deixar pronto para conectar qualquer parceiro (nenhum contratado
 - Migração `20261106120000_parceiro_aporte_pendente` (rode `prisma:deploy`). App mostra "Aguardando o parceiro" e as instruções de pagamento.
 - Passo a passo e decisões jurídicas: `docs/INTEGRACAO_PARCEIRO.md`.
 - **Falta (👤):** escolher e contratar o parceiro (com advogado), definir devolução/desistência e entrega do veículo. Quando as 4 integrações estiverem contratadas, falta só escrever os adaptadores.
+
+## Leitura e validação automática de documentos de motoristas (2026-10-30)
+
+Foco: agilizar a aprovação sem abrir mão da decisão humana. Pronto para conectar, nenhuma base oficial contratada.
+
+- **Novo serviço Python** `services/doc-reader` (FastAPI): lê CNH/CRLV (camada de texto do PDF; OCR com tesseract para fotos), extrai os campos, valida CPF, registro da CNH, RENAVAM, placa, validade e EAR, e consulta a base oficial por uma interface (`GovernmentValidator`) com sandbox e registro `REAL_VALIDATORS`. Stateless, com token.
+- **API**: `DocumentVerification` (migração `20261107120000_verificacao_documentos`, rode `prisma:deploy`). Depois do upload, em segundo plano, cruza com o cadastro (`evaluateVerification` em `@amma/shared`) e grava `APROVAR | REVISAR` + achados, com dados mascarados. `POST /admin/documents/:id/verify` refaz. `DOC_AUTO_APPROVE` (padrão desligado) aprova sozinho só com tudo OK numa base real; reprovação nunca é automática.
+- **Painel**: a lista de motoristas mostra os pontos a conferir e o botão "Refazer leitura".
+- Tudo desligado por padrão (`DOC_READER_MODE=off`): sem mudança de comportamento até configurar. Detalhes, limites e passo a passo em `docs/VALIDACAO_DOCUMENTOS.md`.
+- **Falta (👤):** contratar a base oficial (Serpro ou intermediário), instalar `tesseract` no servidor, **testar os extratores com documentos reais anonimizados** (só foram testados com textos de exemplo), e atualizar a política de privacidade/operadores.

@@ -18,5 +18,14 @@ export function assertProductionConfig(env: Record<string, string | undefined>):
     problems.push(
       'PARTNER_WEBHOOK_SECRET não definido (assinatura dos avisos do parceiro financeiro)',
     );
+  if (env.DOC_READER_MODE === 'http') {
+    if (!env.DOC_READER_URL) problems.push('DOC_READER_URL não definida');
+    if ((env.DOC_READER_TOKEN ?? '').length < 32)
+      problems.push(
+        'DOC_READER_TOKEN deve ter 32+ caracteres (autentica a API no leitor de documentos)',
+      );
+  }
+  if (env.DOC_AUTO_APPROVE === 'true' && env.DOC_READER_MODE !== 'http')
+    problems.push('DOC_AUTO_APPROVE=true exige DOC_READER_MODE=http');
   if (problems.length) throw new Error(`Configuração de produção insegura: ${problems.join('; ')}`);
 }

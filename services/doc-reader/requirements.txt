@@ -1,0 +1,8 @@
+fastapi>=0.115
+uvicorn[standard]>=0.30
+python-multipart>=0.0.9
+pypdf>=5
+pillow>=10
+# OCR de fotos: precisa também do programa `tesseract` (com o idioma `por`) instalado no sistema.
+pytesseract>=0.3.10
+httpx>=0.27

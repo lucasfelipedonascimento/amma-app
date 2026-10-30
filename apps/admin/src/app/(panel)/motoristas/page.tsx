@@ -1,4 +1,4 @@
-import { DOCUMENT_LABEL, type DocumentType } from '@amma/shared';
+import { DOCUMENT_LABEL, type DocumentType, type Finding } from '@amma/shared';
 import { ActionForm } from '@/components/ActionForm';
 import { Badge, Card, Empty, PageTitle, Tabs } from '@/components/ui';
 import { apiGet, qs } from '@/lib/api';
@@ -20,8 +20,17 @@ interface Driver {
     status: string;
     rejectionReason: string | null;
     createdAt: string;
+    /** Leitura automática (CNH e CRLV); null quando não rodou ou o documento não é lido. */
+    verification: {
+      status: 'CONCLUIDA' | 'INDISPONIVEL';
+      recommendation: 'APROVAR' | 'REVISAR' | null;
+      findings: Finding[];
+      autoApproved: boolean;
+    } | null;
   }[];
 }
+
+const FINDING_MARK = { OK: '✓', ALERTA: '!', FALHA: '✗' } as const;
 
 const TABS = [
   { key: 'PENDENTE', label: 'Pendentes' },
@@ -87,6 +96,7 @@ export default async function Motoristas({
                   <td>
                     <Badge value={doc.status} label={APPROVAL_LABEL[doc.status]} />
                     {doc.rejectionReason && <div className="muted">{doc.rejectionReason}</div>}
+                    {doc.verification && <Verification v={doc.verification} />}
                   </td>
                   <td>{dateTime(doc.createdAt)}</td>
                   <td>
@@ -98,6 +108,14 @@ export default async function Motoristas({
                       >
                         Abrir arquivo
                       </a>
+                      {doc.status === 'PENDENTE' && doc.verification && (
+                        <ActionForm
+                          trigger="Refazer leitura"
+                          path={`/admin/documents/${doc.id}/verify`}
+                          tone="plain"
+                          confirm="Refazer a leitura automática deste documento?"
+                        />
+                      )}
                       {doc.status === 'PENDENTE' && (
                         <>
                           <ActionForm
@@ -132,5 +150,33 @@ export default async function Motoristas({
         </Card>
       ))}
     </>
+  );
+}
+
+/** Só o que merece atenção fica à vista; o que conferiu aparece como contagem. */
+function Verification({ v }: { v: NonNullable<Driver['documents'][number]['verification']> }) {
+  if (v.status === 'INDISPONIVEL')
+    return <div className="muted">Leitura automática indisponível: confira à mão.</div>;
+  const issues = v.findings.filter((f) => f.level !== 'OK');
+  const okCount = v.findings.length - issues.length;
+  return (
+    <div className="muted">
+      {v.autoApproved
+        ? 'Aprovado automaticamente: tudo conferiu.'
+        : v.recommendation === 'APROVAR'
+          ? 'Leitura automática: tudo conferiu.'
+          : `Leitura automática: ${issues.length} ponto(s) para conferir.`}
+      {issues.length > 0 && (
+        <ul>
+          {issues.map((f, i) => (
+            <li key={i}>
+              {FINDING_MARK[f.level]} {f.label}
+              {f.detail ? `: ${f.detail}` : ''}
+            </li>
+          ))}
+        </ul>
+      )}
+      {issues.length > 0 && okCount > 0 && <div>{okCount} item(ns) conferido(s).</div>}
+    </div>
   );
 }

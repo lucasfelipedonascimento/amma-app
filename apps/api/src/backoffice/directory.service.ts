@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { driverApproval, type ApprovalStatus, type DocumentType } from '@amma/shared';
 import { PrismaService } from '../prisma.service';
+import { VERIFICATION_VIEW } from '../verification/verification.service';
 
 /** Consultas do painel: motoristas e seus documentos, comerciantes e busca de usuários. */
 @Injectable()
@@ -27,7 +28,10 @@ export class DirectoryService {
       include: {
         driverProfile: { select: { fullName: true, gender: true, genderVerifiedAt: true } },
         vehicles: { select: { id: true, type: true, plate: true, model: true, year: true } },
-        documents: { orderBy: { createdAt: 'desc' } },
+        documents: {
+          orderBy: { createdAt: 'desc' },
+          include: { verification: { select: VERIFICATION_VIEW } },
+        },
       },
       orderBy: { createdAt: 'asc' },
       take: 500,
@@ -52,6 +56,7 @@ export class DirectoryService {
         status: d.status,
         rejectionReason: d.rejectionReason,
         createdAt: d.createdAt,
+        verification: d.verification,
       }));
       return {
         userId: u.id,

@@ -36,9 +36,11 @@ import { DeliveryController } from './delivery.controller';
 import { DeliveryService } from './delivery.service';
 import { DriverOpsController } from './driver-ops.controller';
 import { SimulatorController } from './simulator.controller';
+import { VerificationModule } from '../verification/verification.module';
 
 /** Entregas, corridas de passageiro, despacho, presença do motorista, tempo real, ledger e segurança (Etapas 4 a 7). */
 @Module({
+  imports: [VerificationModule],
   exports: [PositionStore],
   controllers: [
     DeliveryController,

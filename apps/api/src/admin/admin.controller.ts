@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Body,
+  ConflictException,
   Controller,
   Get,
   Header,
@@ -20,6 +21,7 @@ import { Reauth } from '../auth/reauth';
 import { Roles, RolesGuard } from '../auth/roles';
 import { StorageService } from '../common/storage.service';
 import { PrismaService } from '../prisma.service';
+import { VERIFICATION_VIEW, VerificationService } from '../verification/verification.service';
 
 class ReviewDto {
   @IsIn(['APROVADO', 'REPROVADO']) status!: 'APROVADO' | 'REPROVADO';
@@ -33,6 +35,7 @@ export class AdminController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
+    private readonly verification: VerificationService,
   ) {}
 
   @Get('documents')
@@ -50,6 +53,7 @@ export class AdminController {
         userId: true,
         vehicleId: true,
         user: { select: { name: true, phone: true } },
+        verification: { select: VERIFICATION_VIEW },
       },
     });
   }
@@ -63,6 +67,17 @@ export class AdminController {
     const doc = await this.prisma.document.findUnique({ where: { id } });
     if (!doc) throw new NotFoundException();
     return new StreamableFile(await this.storage.read(doc.storageKey), { type: doc.mimeType });
+  }
+
+  /** Refaz a leitura automática (foto nova do leitor, cadastro corrigido, leitor que estava fora do ar). */
+  @Post('documents/:id/verify')
+  @HttpCode(200)
+  async verify(@Param('id', ParseUUIDPipe) id: string) {
+    if (!this.verification.enabled)
+      throw new ConflictException('A leitura automática de documentos está desligada');
+    const v = await this.verification.verify(id);
+    if (!v) throw new NotFoundException();
+    return v;
   }
 
   @Reauth()

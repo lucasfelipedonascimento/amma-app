@@ -31,3 +31,4 @@ export * from './moderation';
 export * from './budget';
 export * from './audit';
 export * from './cancel-options';
+export * from './document-verification';
