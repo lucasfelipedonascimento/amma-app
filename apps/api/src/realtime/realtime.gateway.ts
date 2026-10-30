@@ -56,6 +56,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     if (typeof body?.token !== 'string') return error('BAD_REQUEST', 'token ausente');
     try {
       client.user = await this.auth.authenticate(body.token);
+      if (client.user.blocked) throw new Error('conta bloqueada');
     } catch {
       client.close(4401, 'unauthorized');
       return;

@@ -8,7 +8,7 @@ amma-app/
 │   ├── api/       NestJS + Prisma (PostgreSQL/PostGIS) + Redis: auth, account, driver, admin, legal,
 │   │              delivery (pedidos), dispatch, presence, realtime (WebSocket), ledger, pricing, routing
 │   ├── mobile/    Expo + React Native (app do motorista em src/driver; ver docs/MOBILE.md)
-│   └── admin/     Next.js (reservado, etapa futura)
+│   └── admin/     Next.js 15: painel web da associação (Etapa 10; ver abaixo)
 ├── packages/
 │   └── shared/    @amma/shared: marca, preço, taxas, cotas, ledger, validadores, estados da corrida e da entrega, despacho, geo
 ├── scripts/       check-imports.mjs (regra de importação)
@@ -120,8 +120,23 @@ Não há módulo paralelo: a corrida **é** um `Delivery` com `kind = CORRIDA` (
 | `api/src/welcome`         | Módulo próprio: `PointsService` (cadastro, fotos, mapa, visão por pessoa), `CheckInService` (check-in, saída com benefício, avaliação dos dois lados), `ModerationService` (denúncia, suspensão automática, decisões do admin) |
 | `mobile/src/welcome`      | Aba “Acolhida” do app do motorista: mapa e filtros, detalhe com check-in e denúncia, cadastro (com checklist), meus pontos e visitas                                                                                           |
 
+## Painel admin (Etapa 10)
+
+| Onde                                            | Responsabilidade                                                                                                                                                                                                                           |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `shared/panel-access.ts`                        | Papéis de painel (`ADMIN`, `SOCIO`), áreas e quem abre cada uma. Usado pela API (guard) e pelo painel (menu e páginas)                                                                                                                     |
+| `shared/moderation.ts`, `budget.ts`, `audit.ts` | Regras puras: bloqueio com motivo, recurso (prazo, uma vez, segunda opinião), orçamento (validação e soma) e textos/regra da trilha de auditoria                                                                                           |
+| `api/src/backoffice`                            | `BlocksService`, `AuditService` + `AuditInterceptor` (global, toda rota `/admin/*`), `BudgetService`, `DirectoryService` (motoristas, comerciantes, usuários), `MetricsService`, `PanelGuard`; controllers `/panel`, `/me/block`, `/admin` |
+| `api/src/auth/auth.guard.ts`                    | Conta bloqueada recebe `403 ACCOUNT_BLOCKED` em tudo, exceto rotas `@AllowBlocked()` (`GET /me`, `DELETE /me`, `/me/block`)                                                                                                                |
+| `admin/src/middleware.ts`                       | Renova o token de acesso com o de renovação; sem sessão manda para `/login`                                                                                                                                                                |
+| `admin/src/app/api`                             | `auth/*` (OTP → cookies httpOnly, só para quem tem papel de painel) e `proxy/[...path]` (repassa `/admin` e `/panel`, exige mesma origem nas escritas)                                                                                     |
+| `admin/src/app/(panel)`                         | Páginas de servidor por área; `components/ActionForm.tsx` é o único componente de ação (aprovar, recusar com motivo, bloquear, cadastrar)                                                                                                  |
+
+O navegador nunca fala com a API nem enxerga o token: o painel é o intermediário (sem CORS na API). Dev: painel em `:3001`, API em `:3000` (`ADMIN_API_URL`).
+
 ## Testes
 
 - `pnpm test` — unitários, sem banco (shared e api).
 - `pnpm --filter @amma/mobile test` — Jest (jest-expo + Testing Library): componentes, hooks, provider e cliente WebSocket (motorista e cliente), com os módulos nativos trocados por mocks (`apps/mobile/jest.setup.ts`). **Não** substitui o teste em celular real (`docs/MOBILE.md`).
+- `pnpm --filter @amma/admin test` — Vitest (jsdom): lógica de formulário/sessão, middleware, proxy, login, `ActionForm`, menu por papel e acesso por área.
 - `pnpm --filter @amma/api test:int` — integração com Postgres/PostGIS e Redis reais (`docker compose up -d`). Usa o banco `amma_test` e o Redis db 15, criados/migrados automaticamente. No CI, `ci-api.yml` sobe os dois serviços.

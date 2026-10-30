@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, HttpCode, Post, Req, UseGuards } from '@nestjs/common';
-import { AuthGuard, AuthUser } from '../auth/auth.guard';
+import { AllowBlocked, AuthGuard, AuthUser } from '../auth/auth.guard';
 import { AccountService } from './account.service';
 import { OnboardingDto } from './dto';
 
@@ -9,6 +9,7 @@ export class AccountController {
   constructor(private readonly account: AccountService) {}
 
   @Get()
+  @AllowBlocked()
   me(@Req() req: { user: AuthUser }) {
     return this.account.me(req.user.id);
   }
@@ -20,6 +21,7 @@ export class AccountController {
   }
 
   @Delete()
+  @AllowBlocked()
   @HttpCode(204)
   async remove(@Req() req: { user: AuthUser }) {
     await this.account.deleteAccount(req.user.id);

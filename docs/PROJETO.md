@@ -49,7 +49,7 @@ Monorepo:
 
 - `apps/mobile` — React Native + Expo + TypeScript
 - `apps/api` — NestJS + TypeScript
-- `apps/admin` — Next.js (mais tarde)
+- `apps/admin` — Next.js (painel web da associação)
 - `packages/shared` — tipos e regras compartilhados
 
 Infra: PostgreSQL + PostGIS (Prisma ou TypeORM), Redis (cache e filas), WebSocket (tempo real).

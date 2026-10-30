@@ -17,6 +17,16 @@ Ordem normal, cada item em um terminal.
 | `API_PORT=3000 node apps/api/dist/main.js`      | Sobe a API. Para parar: `Ctrl+C`. Se mudar o código, pare, rode `pnpm build` e suba de novo.                                |
 | `curl localhost:3000/health`                    | Confirma que a API está de pé (deve responder `ok`).                                                                        |
 
+### Painel admin (web)
+
+| Comando                                         | O que faz                                                                                                  |
+| ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `pnpm --filter @amma/admin dev`                 | Sobe o painel em `http://localhost:3001` (a API precisa estar de pé em `:3000`; mude com `ADMIN_API_URL`). |
+| `pnpm --filter @amma/admin build` e `... start` | Compila e roda a versão de produção (`next start -p 3001`).                                                |
+| `pnpm --filter @amma/admin test`                | Testes do painel (Vitest).                                                                                 |
+
+Entre com o admin do seed (`+5583999990001`) para tudo, ou com o sócio `+5583999990003` para ver só a transparência. O código aparece na tela no modo simulado.
+
 ### Celular físico e emulador
 
 | Comando                                                                        | O que faz                                                                                                                                                               |
@@ -48,6 +58,7 @@ Telefones do seed: admin `...0001`, passageira `...0002`, motorista aprovado `..
 | `pnpm test`                                            | Testes unitários de tudo (shared, api, mobile). Não precisa de banco.                                      |
 | `pnpm --filter @amma/api test:int`                     | Testes de integração da API. Precisa de `pnpm db:up`. Usa o banco `amma_test`, nunca o de desenvolvimento. |
 | `pnpm --filter @amma/mobile test`                      | Só os testes do app (Jest).                                                                                |
+| `pnpm --filter @amma/admin test`                       | Só os testes do painel web (Vitest).                                                                       |
 | `pnpm --filter @amma/shared test`                      | Só os testes das regras compartilhadas.                                                                    |
 | `pnpm lint`                                            | ESLint em tudo e a regra de importação entre apps.                                                         |
 | `pnpm typecheck`                                       | Confere os tipos TypeScript.                                                                               |

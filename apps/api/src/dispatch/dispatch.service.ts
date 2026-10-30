@@ -336,7 +336,17 @@ export class DispatchService {
 
   private async approvedDrivers(ids: string[]): Promise<Set<string>> {
     const out = new Set<string>();
+    // Conta bloqueada não recebe oferta, mesmo com documentos aprovados.
+    const blocked = new Set(
+      (
+        await this.prisma.user.findMany({
+          where: { id: { in: ids }, blockedAt: { not: null } },
+          select: { id: true },
+        })
+      ).map((u) => u.id),
+    );
     for (const id of ids) {
+      if (blocked.has(id)) continue;
       if ((await this.presence.approvalOf(id)).status === 'APROVADO') out.add(id);
     }
     return out;

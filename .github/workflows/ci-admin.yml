@@ -1,0 +1,38 @@
+name: CI admin
+on:
+  pull_request:
+    paths:
+      [
+        'apps/admin/**',
+        'packages/shared/**',
+        'package.json',
+        'pnpm-*.yaml',
+        'turbo.json',
+        'tsconfig.base.json',
+        'eslint.config.mjs',
+        '.github/workflows/ci-admin.yml',
+      ]
+  push:
+    branches: [main]
+    paths:
+      [
+        'apps/admin/**',
+        'packages/shared/**',
+        'package.json',
+        'pnpm-*.yaml',
+        'turbo.json',
+        'tsconfig.base.json',
+        'eslint.config.mjs',
+        '.github/workflows/ci-admin.yml',
+      ]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check:imports
+      - run: pnpm turbo run lint typecheck test build --filter=@amma/admin...

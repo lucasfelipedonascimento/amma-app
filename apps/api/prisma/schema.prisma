@@ -218,6 +218,13 @@ model User {
   checkIns      CheckIn[]
   pointRatings  PointRating[]  @relation("PointRatingAuthor")
   pointReports  PointReport[]  @relation("PointReporter")
+
+  // Etapa 10: painel admin. blockedAt é cópia do bloqueio em vigor (a verdade está em AccountBlock).
+  blockedAt     DateTime?      @db.Timestamptz(3)
+  blocks        AccountBlock[] @relation("BlockTarget")
+  blocksMade    AccountBlock[] @relation("BlockAuthor")
+  auditLogs     AuditLog[]
+  budgetEntries BudgetEntry[]
 }
 
 // Código de uso único enviado por SMS. Só o hash é guardado.
@@ -599,16 +606,21 @@ model Payment {
 
 // Estabelecimento do comerciante. O endereço é o ponto de coleta padrão dos pedidos dele.
 model Merchant {
-  userId    String   @id
-  tradeName String
+  userId          String         @id
+  tradeName       String
   // CNPJ só com dígitos; opcional (MEI/informal pode cadastrar sem).
-  cnpj      String?  @unique
-  address   String
-  lat       Float
-  lng       Float
-  createdAt DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt DateTime @updatedAt @db.Timestamptz(3)
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cnpj            String?        @unique
+  address         String
+  lat             Float
+  lng             Float
+  createdAt       DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime       @updatedAt @db.Timestamptz(3)
+  // Etapa 10: cadastro revisado pelo admin. Recusa exige motivo.
+  approvalStatus  ApprovalStatus @default(PENDENTE)
+  rejectionReason String?
+  reviewedById    String?
+  reviewedAt      DateTime?      @db.Timestamptz(3)
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 // Avaliação depois de entregue (1 a 5; o banco confere). Uma por direção em cada pedido:
@@ -1197,4 +1209,87 @@ model PointEvent {
   point WelcomePoint @relation(fields: [pointId], references: [id], onDelete: Cascade)
 
   @@index([pointId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Etapa 10: painel admin — bloqueios com recurso, trilha de auditoria e orçamento aberto
+// ---------------------------------------------------------------------------
+
+enum BlockStatus {
+  ATIVO
+  EM_RECURSO
+  MANTIDO
+  REVOGADO
+}
+
+enum BudgetKind {
+  RECEITA
+  DESPESA
+}
+
+// Bloqueio de conta. Motivo, autor e data nunca mudam (trigger); só o andamento do recurso/revogação.
+// Só um bloqueio em vigor (status <> REVOGADO) por pessoa (índice único parcial na migração).
+model AccountBlock {
+  id             String      @id @default(uuid())
+  userId         String
+  reason         String
+  status         BlockStatus @default(ATIVO)
+  blockedById    String
+  blockedAt      DateTime    @default(now()) @db.Timestamptz(3)
+  // Recurso (um por bloqueio).
+  appealText     String?
+  appealedAt     DateTime?   @db.Timestamptz(3)
+  decidedById    String?
+  decidedAt      DateTime?   @db.Timestamptz(3)
+  decisionReason String?
+  // Revogação direta pelo admin (sem passar por recurso).
+  revokedById    String?
+  revokedAt      DateTime?   @db.Timestamptz(3)
+  revokeReason   String?
+
+  user      User @relation("BlockTarget", fields: [userId], references: [id])
+  blockedBy User @relation("BlockAuthor", fields: [blockedById], references: [id])
+
+  @@index([userId, status])
+  @@index([status, blockedAt])
+}
+
+// Trilha de auditoria (somente inserção): quem fez o quê, em qual registro e quando.
+model AuditLog {
+  id        String   @id @default(uuid())
+  actorId   String
+  // "POST /admin/users/:id/block"; texto em português em shared/audit.ts.
+  action    String
+  // Parâmetros da rota (ids dos registros afetados). Sem corpo da requisição: pode ter dado pessoal.
+  params    Json
+  // Motivo informado na ação (quando houver).
+  reason    String?
+  ip        String?
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  actor User @relation(fields: [actorId], references: [id])
+
+  @@index([createdAt])
+  @@index([actorId, createdAt])
+  @@index([action, createdAt])
+}
+
+// Lançamentos manuais do orçamento aberto (somente inserção; erro = estorno). As taxas vêm do ledger.
+model BudgetEntry {
+  id          String     @id @default(uuid())
+  kind        BudgetKind
+  category    String
+  description String
+  amountCents Int
+  occurredOn  DateTime   @db.Date
+  // Número do comprovante/nota (texto livre; o arquivo não é guardado aqui).
+  receiptRef  String?
+  createdById String
+  createdAt   DateTime   @default(now()) @db.Timestamptz(3)
+  // Estorno: lançamento que cancela outro. Um estorno por lançamento.
+  reversalOf  String?    @unique
+
+  createdBy User @relation(fields: [createdById], references: [id])
+
+  @@index([occurredOn])
 }

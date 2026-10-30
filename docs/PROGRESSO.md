@@ -360,3 +360,43 @@ Sem variável de ambiente nova. Roteiro no celular: `docs/MOBILE.md` roteiro I.
 - **Mapa:** raio por faixa de latitude/longitude em `Float` e distância em `shared`, sem índice espacial. Com milhares de pontos, migrar para uma coluna PostGIS.
 - **Ponto sem anfitrião não tem “dono” operacional:** espaço público cadastrado por alguém fica sob o cadastrante (que pode editar/remover) e, se a pessoa excluir a conta, o ponto é removido. Definir se o admin “adota” esses pontos.
 - Herdadas das etapas anteriores: sem provedor de pagamento real, parceiro de compra/seguro e fundo ainda por definir, WebSocket em memória, sem fonte Outfit/ícone/tema escuro.
+
+## Etapa 10 — Painel admin ✅ (testado no navegador só por requisições HTTP, sem teste visual)
+
+**Feito** (detalhes em `docs/API.md` seção 16, `docs/DECISOES.md`, `docs/ARQUITETURA.md`)
+
+- **`apps/admin`** (Next.js 15): entrada por celular + código; sessão em cookies `httpOnly`; proxy para a API; menu e páginas por papel.
+- **Papéis:** `ADMIN` faz tudo; **sócio** (motorista com ≥1 cota) só lê **assembleias e resultados, fila da compra coletiva e orçamento aberto**. Quem não é um dos dois não ganha sessão. A API confere de novo em cada rota (nega por padrão).
+- **Aprovações:** motoristas e seus documentos (abre o arquivo, aprova ou reprova com motivo), **comerciantes** (novo `approvalStatus`), **pontos de acolhida** (aprovar com conferência de identidade e local, recusar, remover, reativar) e denúncias de pontos.
+- **Painel inicial:** pedidos e corridas (concluídos, cancelados, em andamento, taxa de conclusão), ganho médio líquido por trabalhador e por corrida, sócios/cotas/níveis, fundo de cotas, aportes da compra coletiva, receita da taxa base, satisfação (clientes × motoristas × pontos) e fila do que está esperando a associação; período de 7/30/90 dias.
+- **Assembleias:** propostas, resultados com barras e selo de conferência, abrir proposta. **Compra coletiva:** grupos, fila por pontos, contemplados, criar grupo, contemplar e encerrar.
+- **Denúncias e alertas de emergência** (fila por gravidade, assumir/encerrar alerta, responder denúncia) com atalho para bloquear o denunciado.
+- **Bloqueios com motivo e direito de recurso:** a pessoa bloqueada vê o motivo e recorre (uma vez, em 30 dias); **outro** admin decide com justificativa; o admin revoga quando quiser. Conta bloqueada é barrada na API inteira (e sai do ar), menos ver o motivo, recorrer e excluir a conta.
+- **Trilha de auditoria:** interceptor global grava toda escrita e a abertura de dado sensível em `/admin/*`, somente inserção (o banco recusa editar), com filtro por ação e datas e paginação.
+- **Orçamento aberto:** receita da taxa base do ledger + lançamentos do admin (receitas e despesas por categoria, imutáveis, estorno), resumo por categoria e mês, visível ao sócio.
+- **Testes:** shared **286** (+33), api **67** unitários e **353** de integração (+24, `test/backoffice.int.test.ts`: papéis, bloqueio/recurso/revogação, imutabilidade no banco, trilha, orçamento, métricas), admin **42** (formulário, sessão, middleware, proxy, login, menu por papel). Verificado de verdade: API + `next start`, login do admin e do sócio, páginas, bloqueio pelo proxy aparecendo na auditoria.
+
+**Como rodar**
+
+```
+pnpm install && pnpm db:up
+cd apps/api && pnpm prisma:deploy && pnpm db:seed && cd ../..     # migração nova: painel_admin
+pnpm build && pnpm test && pnpm lint && pnpm typecheck
+pnpm --filter @amma/api test:int
+node apps/api/dist/main.js                    # API em :3000
+pnpm --filter @amma/admin dev                 # painel em http://localhost:3001
+```
+
+Admin do seed `+5583999990001`; sócio `+5583999990003` (o código aparece na tela no modo simulado). Variável nova: `ADMIN_API_URL` (padrão `http://localhost:3000`).
+
+**Falta / pendências**
+
+- **O app do celular não mostra o bloqueio nem tem tela de recurso.** Uma conta bloqueada recebe `403 ACCOUNT_BLOCKED` e o app mostra erro genérico; a API já tem `GET /me/block` e `POST /me/block/appeal` para a tela. Também **não há aviso** (push/SMS) à pessoa de que foi bloqueada nem de que o recurso foi decidido.
+- **Recusa de comerciante não impede pedir entrega** (ver `docs/DECISOES.md`): decidir se vira checagem no pedido ou se a associação usa o bloqueio da conta.
+- **Bloqueio não encerra o que está em andamento:** uma entrega já aceita continua com o motorista bloqueado até alguém cancelar; o token de acesso vigente (até 15 min) é barrado na hora porque o banco é consultado a cada chamada.
+- **Equipe com permissões por área** (moderador, financeiro) não existe: quem é `ADMIN` faz tudo. O prazo de 30 dias do recurso é exemplo a confirmar.
+- **Auditoria:** não registra a leitura das listas (nomes e telefones) e, se a gravação falhar, a ação já aconteceu (só vai ao log). Falta prazo de guarda (ver `docs/LGPD.md`).
+- **Orçamento:** comprovante é só um texto (o arquivo não é guardado); só `ADMIN` lança, sem dupla aprovação; não há exportação (CSV/PDF) nem comparação entre anos; não existe fundo do seguro (os pedidos de seguro, sobras e regras municipais seguem **só por API**, sem tela no painel).
+- **Painel:** sem teste visual em navegador (só HTTP e testes de componente), sem fonte Outfit embutida, sem tema escuro, sem aviso de fila nova; a lista de motoristas traz até 500 (sem paginação) e a de usuários até 50 (busca por nome/telefone). Atualização é por recarregar a página.
+- **Deploy:** `ci-admin.yml` roda lint/typecheck/test/build; `deploy-admin.yml` é esqueleto. Em produção o painel precisa de HTTPS (cookies `Secure` já ligados) e `ADMIN_API_URL` apontando para a API.
+- Herdadas: sem provedor de pagamento real, parceiro de compra/seguro e fundo por definir, WebSocket em memória, alertas de emergência sem equipe de plantão (o painel agora lista, mas ninguém é acionado).

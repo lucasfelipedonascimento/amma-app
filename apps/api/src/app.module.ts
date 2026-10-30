@@ -6,6 +6,7 @@ import { AdminController } from './admin/admin.controller';
 import { AppController } from './app.controller';
 import { AssociationModule } from './association/association.module';
 import { AuthModule } from './auth/auth.module';
+import { BackofficeModule } from './backoffice/backoffice.module';
 import { DeliveryModule } from './delivery/delivery.module';
 import { DriverController } from './driver/driver.controller';
 import { DriverService } from './driver/driver.service';
@@ -21,6 +22,7 @@ import { WelcomeModule } from './welcome/welcome.module';
     DeliveryModule,
     AssociationModule,
     WelcomeModule,
+    BackofficeModule,
   ],
   controllers: [
     AppController,

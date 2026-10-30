@@ -15,6 +15,7 @@ import { SurplusService } from './surplus.service';
 /** Etapa 8: cotas e nível, assembleia, compra coletiva, seguro mútuo e sobras anuais. */
 @Module({
   controllers: [AssociationController, AdminAssociationController],
+  exports: [MembersService, AssemblyService, GroupPurchaseService],
   providers: [
     LedgerService,
     MembersService,
