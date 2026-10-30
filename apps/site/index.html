@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AMMA — Associação dos Motoboys e Motoristas de Aplicativo</title>
 <meta name="description" content="App de entregas e corridas de João Pessoa-PB feito para valer a pena a quem trabalha: taxa de 10%, associação opcional, cotas, sobras anuais e voto de cada sócio.">
+<link rel="icon" type="image/png" href="assets/favicon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -54,7 +55,25 @@
     backdrop-filter: blur(8px); border-bottom: 1px solid var(--line);
   }
   .nav .wrap { display: flex; align-items: center; justify-content: space-between; height: 64px; }
-  .logo { font-weight: 800; font-size: 1.5rem; letter-spacing: .02em; text-decoration: none; color: var(--red); }
+  .logo { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 1.5rem; letter-spacing: .02em; text-decoration: none; color: var(--red); }
+  .logo img { width: 38px; height: 38px; display: block; }
+  .hero-brand { display: flex; align-items: center; gap: 18px; margin-bottom: 36px; }
+  .hero-brand img { width: 84px; height: 84px; border-radius: 22px; box-shadow: 0 8px 28px rgba(0,0,0,.35); }
+  .hero-brand b { display: block; font-size: 2.2rem; font-weight: 800; letter-spacing: .02em; color: #fff; line-height: 1; }
+  .hero-brand span { font-size: .85rem; color: #bdb2a9; }
+  .figure { margin-top: 36px; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--line); background: #fff; }
+  .figure img { display: block; width: 100%; height: auto; }
+  .figure figcaption { padding: 14px 22px; font-size: .9rem; color: var(--ink-soft); }
+  .perks { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
+  .perks span { background: #fff; border: 1px solid var(--line); border-radius: 999px; padding: 6px 16px; font-weight: 500; font-size: .92rem; }
+  .flag { display: block; border: 3px solid #fff; border-radius: 6px; box-shadow: 0 10px 30px rgba(0,0,0,.4); }
+  .hero-flag { position: absolute; right: 7%; top: 90px; width: 270px; height: auto; transform: rotate(-4deg); z-index: 1; }
+  .hero-brand .flag { width: 34px; height: auto; display: inline-block; vertical-align: middle; margin-right: 8px; border-width: 1.5px; box-shadow: none; }
+  @media (max-width: 900px) { .hero-flag { display: none; } }
+  .foot-logos { display: flex; align-items: center; justify-content: center; gap: 16px; margin-bottom: 14px; }
+  .foot-logos img { height: 56px; width: auto; display: block; }
+  .foot-logos .logo-app { border-radius: 15px; }
+  .foot-logos .flag { border-width: 2px; border-radius: 4px; box-shadow: none; }
   .nav nav { display: flex; gap: 22px; font-size: .95rem; font-weight: 500; }
   .nav nav a { text-decoration: none; color: var(--ink-soft); }
   .nav nav a:hover { color: var(--red); }
@@ -144,6 +163,17 @@
   .dark .lead, .dark .card p { color: #cfc5bc; }
   .dark .card { background: #2a2522; border-color: #3a3430; }
 
+  .calc { display: flex; flex-wrap: wrap; align-items: stretch; justify-content: center; gap: 12px; margin-top: 28px; }
+  .calc .part { flex: 1 1 170px; max-width: 220px; background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 20px 16px; text-align: center; }
+  .calc .part b { display: block; font-size: 1.15rem; }
+  .calc .part span { font-size: .9rem; color: var(--ink-soft); }
+  .calc .part.total { background: var(--red); border-color: var(--red); }
+  .calc .part.total b, .calc .part.total span { color: #fff; }
+  .calc .op { align-self: center; font-size: 1.8rem; font-weight: 800; color: var(--red); }
+  .floor { display: flex; gap: 18px; align-items: center; margin-top: 18px; background: #fdf3d9; border-color: #ecd28a; }
+  .floor .icon { margin: 0; font-size: 2.2rem; }
+  .floor h3 { margin-bottom: 4px; }
+  .floor p { color: #5b4a12; }
   .legal { background: #fdf3d9; border: 1px solid #ecd28a; border-radius: var(--radius); padding: 24px 28px; margin-top: 36px; }
   .legal h3 { margin-bottom: 6px; }
   .legal p { color: #5b4a12; }
@@ -156,13 +186,14 @@
 
 <header class="nav">
   <div class="wrap">
-    <a class="logo" href="#topo">AMMA</a>
+    <a class="logo" href="#topo"><img src="assets/logo.png" alt="" width="38" height="38">AMMA</a>
     <nav>
       <a href="#sobre">Sobre</a>
       <a href="#como">Como funciona</a>
       <a href="#corridas">Corridas</a>
       <a href="#taxas">Taxas</a>
       <a href="#associacao">Associação</a>
+      <a href="#acolhida">Acolhida</a>
       <a href="#seguranca">Segurança</a>
     </nav>
   </div>
@@ -170,8 +201,12 @@
 
 <main id="topo">
   <div class="hero">
+    <img class="flag hero-flag" src="assets/bandeira-joao-pessoa.svg" alt="Bandeira de João Pessoa" width="270" height="180">
     <div class="wrap">
-      <span class="eyebrow" style="color:#ff9a92">João Pessoa · PB</span>
+      <div class="hero-brand">
+        <img src="assets/logo.png" alt="Logo da AMMA: moto de entrega com caixa e coração" width="84" height="84">
+        <div><b>AMMA</b><span><img class="flag" src="assets/bandeira-joao-pessoa.svg" alt="Bandeira de João Pessoa" width="34" height="23">Nascido em João Pessoa · PB</span></div>
+      </div>
       <h1>O app de entregas e corridas que <em>vale a pena</em> a quem trabalha.</h1>
       <p>A AMMA é a Associação dos Motoboys e Motoristas de Aplicativo. Taxa clara, ganhos transparentes e o trabalhador como dono: quem roda, participa das decisões e divide as sobras.</p>
       <a class="btn" href="#como">Ver como funciona</a>
@@ -233,10 +268,28 @@
       </div>
 
       <h3 style="margin-top:48px">Como o preço é calculado</h3>
-      <div class="card" style="margin-top:14px">
-        <p><b style="color:var(--ink)">valor = máximo entre (base + distância × preço por km + tempo × preço por minuto) e o piso.</b><br>
-        A parte variável arredonda para cima, a favor do trabalhador. As tabelas são da associação, têm versão e data de vigência, e a corrida guarda a versão que usou.</p>
+      <p class="lead" style="margin-top:8px">É uma conta simples: o preço junta três partes, e nenhuma corrida custa menos que um valor mínimo.</p>
+      <div class="calc">
+        <div class="part"><div class="icon">🚩</div><b>Saída</b><span>Um valor fixo para começar a corrida.</span></div>
+        <div class="op">+</div>
+        <div class="part"><div class="icon">📍</div><b>Distância</b><span>Quanto mais longe, mais cobra.</span></div>
+        <div class="op">+</div>
+        <div class="part"><div class="icon">⏱️</div><b>Tempo</b><span>Trânsito e espera também contam.</span></div>
+        <div class="op">=</div>
+        <div class="part total"><div class="icon">💵</div><b>Preço</b><span>O que o cliente vê antes de pedir.</span></div>
       </div>
+      <div class="card floor">
+        <div class="icon">🛟</div>
+        <div>
+          <h3>Valor mínimo garantido</h3>
+          <p>Se a conta der menos que o mínimo, vale o mínimo. Assim, nem uma corrida curta paga menos do que compensa para quem dirige.</p>
+        </div>
+      </div>
+      <ul class="about-list">
+        <li>Os valores de cada parte são <b>definidos pela associação</b>, não por um algoritmo escondido.</li>
+        <li>O preço que você vê <b>é o preço cobrado</b>. Não muda no meio do caminho.</li>
+        <li>Na dúvida, o centavo sempre <b>sobra para o trabalhador</b>.</li>
+      </ul>
     </div>
   </section>
 
@@ -298,13 +351,32 @@
         <div class="card"><div class="icon">💰</div><h3>Sobras anuais</h3><p>No fim do ano, o que sobrar é dividido entre os sócios, metade proporcional ao uso do app e metade às cotas (o peso é configurável). A conta fecha ao centavo, com simulação obrigatória antes.</p></div>
         <div class="card"><div class="icon">🚙</div><h3>Compra coletiva de veículos</h3><p>Grupos para comprar carros e motos juntos. A fila combina cotas e tempo de espera, com pesos votados em assembleia, e o dinheiro passa por parceiro regulado.</p></div>
         <div class="card"><div class="icon">🛡️</div><h3>Seguro mútuo</h3><p>O sócio faz o pedido com anexos, acompanha a linha do tempo e a decisão é sempre humana, com motivo registrado. Quem pediu não decide o próprio pedido.</p></div>
-        <div class="card"><div class="icon">☕</div><h3>Pontos de acolhida</h3><p>Locais com água, banheiro e carregador para quem passa o dia na rua, com mapa, check-in e avaliação.</p></div>
       </div>
 
       <div class="legal">
         <h3>Transparência sobre o dinheiro</h3>
         <p>A AMMA <b>não capta dinheiro nem concede crédito</b>. Pagamentos e financiamentos passam por parceiros regulados (consórcio e cooperativa de crédito). Dentro do app, cotas e saldos são registros contábeis em livro-razão que só aceita novos lançamentos: nada é apagado ou editado, só estornado com novo registro.</p>
       </div>
+    </div>
+  </section>
+
+  <section id="acolhida" class="alt">
+    <div class="wrap">
+      <span class="eyebrow">Pontos de acolhida</span>
+      <h2>Um lugar para parar, comer e descansar.</h2>
+      <p class="lead">Quem passa o dia na rua precisa de um canto digno. Os Pontos de Acolhida da AMMA são espaços para o motoboy e o motorista de aplicativo fazer uma pausa com conforto, e no app aparecem no mapa, com filtro, check-in e avaliação.</p>
+      <div class="perks">
+        <span>🍽️ Refeitório com micro-ondas</span>
+        <span>🔌 Mesas com tomadas e USB</span>
+        <span>🚻 Banheiros masculino e feminino</span>
+        <span>🤫 Sala de silêncio</span>
+        <span>🛏️ Redes, sofás e colchões</span>
+        <span>❄️ Ar-condicionado</span>
+      </div>
+      <figure class="figure">
+        <img src="assets/ponto-de-acolhida.jpg" alt="Ilustração de um Ponto de Acolhida da AMMA: entrada, refeitório com micro-ondas e mesas com tomadas, banheiros masculino e feminino e sala de silêncio com redes, sofás e colchões" loading="lazy">
+        <figcaption>Ilustração de como será um Ponto de Acolhida.</figcaption>
+      </figure>
     </div>
   </section>
 
@@ -328,6 +400,10 @@
 
 <footer>
   <div class="wrap">
+    <div class="foot-logos">
+      <img class="logo-app" src="assets/logo.png" alt="Logo da AMMA" width="56" height="56">
+      <img class="flag" src="assets/bandeira-joao-pessoa.svg" alt="Bandeira de João Pessoa" width="84" height="56">
+    </div>
     <b>AMMA</b>
     Associação dos Motoboys e Motoristas de Aplicativo · João Pessoa-PB
   </div>
