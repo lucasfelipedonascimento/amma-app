@@ -18,9 +18,17 @@ export const PARTNER_RECEIVABLE = 'PARTNER_RECEIVABLE';
 export const PLATFORM_REVENUE = 'PLATFORM_REVENUE';
 export const workerBalanceAccount = (userId: string) => `WORKER_BALANCE:${userId}`;
 export const workerQuotasAccount = (userId: string) => `WORKER_QUOTAS:${userId}`;
+/** Sobras anuais a distribuir (devedora): o que a associação separou e repassou aos sócios. */
+export const ASSOCIATION_SURPLUS = 'ASSOCIATION_SURPLUS';
+/** Aportes de um grupo de compra, registrados no parceiro (devedora). Não é dinheiro da AMMA. */
+export const partnerGroupAccount = (groupId: string) => `PARTNER_GROUP:${groupId}`;
+/** Quanto um sócio já aportou num grupo (credora). */
+export const memberGroupAccount = (groupId: string, userId: string) =>
+  `MEMBER_GROUP:${groupId}:${userId}`;
 
 export type Direction = 'DEBIT' | 'CREDIT';
-export type LedgerKind = 'RIDE_SETTLEMENT' | 'REVERSAL';
+export type LedgerKind =
+  'RIDE_SETTLEMENT' | 'REVERSAL' | 'GROUP_CONTRIBUTION' | 'SURPLUS_DISTRIBUTION';
 
 export interface Posting {
   readonly account: string;
@@ -62,6 +70,63 @@ export function buildRideSettlement(input: {
       ...credit(workerBalanceAccount(input.workerId), fees.workerNetCents),
       ...credit(PLATFORM_REVENUE, fees.platformFeeCents),
       ...credit(workerQuotasAccount(input.workerId), fees.associationFeeCents),
+    ],
+  };
+}
+
+/** Aporte de um sócio na compra coletiva: o dinheiro vai ao parceiro regulado; aqui só se registra. */
+export function buildGroupContribution(input: {
+  id: string;
+  contributionId: string;
+  groupId: string;
+  userId: string;
+  amountCents: Cents;
+  createdAt: string;
+}): LedgerTransaction {
+  return {
+    id: input.id,
+    kind: 'GROUP_CONTRIBUTION',
+    reference: input.contributionId,
+    createdAt: input.createdAt,
+    postings: [
+      {
+        account: partnerGroupAccount(input.groupId),
+        direction: 'DEBIT',
+        amountCents: input.amountCents,
+      },
+      {
+        account: memberGroupAccount(input.groupId, input.userId),
+        direction: 'CREDIT',
+        amountCents: input.amountCents,
+      },
+    ],
+  };
+}
+
+/** Fechamento das sobras de um ano: cada parte vira saldo a pagar ao sócio (pago pelo parceiro). */
+export function buildSurplusDistribution(input: {
+  id: string;
+  runId: string;
+  shares: readonly { userId: string; amountCents: Cents }[];
+  createdAt: string;
+}): LedgerTransaction {
+  const paid = input.shares.filter((s) => s.amountCents > 0);
+  return {
+    id: input.id,
+    kind: 'SURPLUS_DISTRIBUTION',
+    reference: input.runId,
+    createdAt: input.createdAt,
+    postings: [
+      {
+        account: ASSOCIATION_SURPLUS,
+        direction: 'DEBIT',
+        amountCents: paid.reduce((s, x) => s + x.amountCents, 0),
+      },
+      ...paid.map((s) => ({
+        account: workerBalanceAccount(s.userId),
+        direction: 'CREDIT' as const,
+        amountCents: s.amountCents,
+      })),
     ],
   };
 }

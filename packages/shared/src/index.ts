@@ -20,3 +20,8 @@ export * from './rating';
 export * from './ride';
 export * from './safety';
 export * from './municipal-rules';
+export * from './membership';
+export * from './assembly';
+export * from './group-purchase';
+export * from './insurance';
+export * from './surplus';

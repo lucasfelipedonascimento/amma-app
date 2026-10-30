@@ -13,3 +13,5 @@ process.env.NODE_ENV = 'test';
 // Sem rotina automática: os testes chamam DispatchService.tick() quando querem.
 process.env.DISPATCH_TICK_MS = '0';
 process.env.UPLOAD_DIR = mkdtempSync(join(tmpdir(), 'amma-test-'));
+// Fechamento de votações só quando o teste chama (ou ao ler a proposta).
+process.env.ASSOCIATION_TICK_MS = '0';

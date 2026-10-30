@@ -282,3 +282,40 @@ Variável nova: `PUBLIC_BASE_URL` (links de compartilhar; padrão `http://localh
 - **Nada foi testado em aparelho físico:** foto do motorista (`Image` com cabeçalho `Authorization` no Android), menu de compartilhar, ligação de emergência, mapa e geocodificação. Segue o roteiro G.
 - Herdadas: endereço sem autocomplete, sem push para o passageiro, sem estorno de corrida concluída/disputa, sem fonte Outfit/ícone/tema escuro, WebSocket em memória (1 instância), sem provedor de pagamento real.
 - Limpeza futura: remover `Ride`/`QuotaAccount`/`QuotaEntry` (sem uso) e, se valer o esforço, renomear `Delivery` para algo neutro.
+
+## Etapa 8 — Módulo da associação ✅ (sem teste em celular real)
+
+**Feito** (detalhes em `docs/API.md` seção 14, `docs/REGRAS_FINANCEIRAS.md` seção 8, `docs/DECISOES.md` e `docs/MOBILE.md` roteiro H)
+
+- **Taxa, cotas e nível:** escolha de 0/2/4% (rota que já existia, agora na aba **AMMA**), cotas e fração lidas do ledger, nível Bronze/Prata/Ouro e **progresso até o próximo** (cotas e valor que faltam, barra). Sócio = ao menos 1 cota.
+- **Assembleia:** o admin abre propostas (prazo 24 h–60 dias, quórum opcional); **1 sócio = 1 voto**; o sócio **muda o voto até o fechamento**; fechamento único e seguro contra corrida; resultado (aprovada/rejeitada/sem quórum) com contagem só depois de encerrar e `ballotDigest`; **histórico imutável** (`VoteRecord`) e proposta encerrada travada pelo banco.
+- **Compra coletiva:** grupos de veículos, **fila por cotas e tempo** com regras **configuráveis por votação** (proposta `REGRA_COMPRA_COLETIVA` aprovada cria uma nova versão), entrar/sair, **aportes registrados como lançamentos** no ledger (`GROUP_CONTRIBUTION`), contemplação pela associação. **Sem dinheiro real:** o parceiro (consórcio/cooperativa) é uma interface simulada (`PurchasePartner`).
+- **Seguro mútuo:** pedido, anexos (JPG/PNG/PDF), linha do tempo, e **decisão humana** com motivo obrigatório; quem pediu não decide o próprio pedido.
+- **Sobras anuais:** cálculo proporcional ao **uso** e às **cotas** (peso do uso configurável), exato ao centavo; **simulação obrigatória** antes do fechamento (checksum), uma vez por ano, lançamento `SURPLUS_DISTRIBUTION` no ledger.
+- **App:** aba **AMMA** no app do motorista (Resumo · Assembleia · Compra · Seguro).
+- **Seed:** `...0003` e `...0007` viram sócios de exemplo (12 e 35 cotas); um grupo e uma proposta de exemplo.
+- **Testes:** shared **232** (+67), api **60** unitários e **285** de integração (+123), mobile **233** (+40). Bundle Android conferido com `expo export`.
+
+**Como rodar**
+
+```
+pnpm install && pnpm db:up
+cd apps/api && pnpm prisma:deploy && pnpm db:seed && cd ../..     # migração nova: associacao
+pnpm build && pnpm test && pnpm lint && pnpm typecheck
+pnpm --filter @amma/api test:int
+pnpm --filter @amma/mobile test
+```
+
+Variáveis novas (opcionais): `PURCHASE_PARTNER=sandbox` e `ASSOCIATION_TICK_MS=30000`. Roteiro no celular: `docs/MOBILE.md` roteiro H.
+
+**Falta / pendências**
+
+- **Decisões da associação que o código assumiu (estão como exemplo/padrão e precisam ser confirmadas):** quem é sócio (hoje: ≥ 1 cota — quem escolhe 0% não vota); quem pode propor (hoje só o admin); quórum e maioria; os pesos e o mínimo da fila e o aporte mínimo (10 / 1 / 1 cota / R$ 50,00); o peso do uso nas sobras (50%); se as sobras viram saldo a pagar (como está) ou cotas; se o contemplado precisa estar em dia com os aportes.
+- **Nenhum parceiro real:** consórcio/cooperativa de crédito não foi contratado. É preciso implementar `PurchasePartner`, definir a conciliação (o que o parceiro confirma depois, devoluções, desistência com aportes) e como o contemplado recebe o veículo. Hoje quem tem aportes não consegue sair da fila pelo app.
+- **Seguro mútuo sem fundo nem pagamento:** aprovar só registra o valor. Faltam: regulamento (coberturas, carência, limites, prazo para pedir), de onde sai o dinheiro (fundo? seguradora parceira?) e o pagamento ao sócio. Pode exigir regulação (SUSEP) — **consultar o jurídico antes de operar**.
+- **Sobras:** o valor a distribuir é digitado pelo admin; não há contabilidade da associação no sistema. Não há estorno do fechamento (errou = lançamento corretivo decidido pela associação). Uso = valor bruto concluído (não considera cancelamentos pós-entrega, que ainda não existem).
+- **Admin só por API:** abrir proposta, criar grupo, contemplar, decidir seguro e fechar sobras não têm painel (continua o `apps/admin` pendente). Não há lista de quem votou nem de quem é sócio para o admin.
+- **App:** sem push/aviso de nova votação ou de decisão do seguro (o sócio só vê ao abrir a aba); anexos só da galeria (sem câmera, sem PDF pelo app); pedido de seguro sem edição. Nada testado em aparelho físico (roteiro H).
+- **Votos nominais** ficam no banco para auditoria; definir quem acessa e como se registra (ver `docs/LGPD.md`).
+- Rotina de fechamento roda a cada 30 s; a proposta também fecha ao ser lida. Sem notificação de resultado.
+- Herdadas das etapas anteriores: sem provedor de pagamento real, sem estorno persistido de corrida concluída, WebSocket em memória, sem fonte Outfit/ícone/tema escuro.

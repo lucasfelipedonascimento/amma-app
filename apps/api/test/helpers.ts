@@ -30,6 +30,7 @@ export class TestApp {
   readonly prisma = new PrismaClient();
   private phoneSeq = 0;
   private rulesSeq = 0;
+  private quotaSeq = 0;
 
   private constructor(
     readonly app: INestApplication,
@@ -211,6 +212,35 @@ export class TestApp {
         },
       });
     return { ...u, vehicleId: vehicle.id, plate: `ABC${1000 + n}` };
+  }
+
+  /**
+   * Dá cotas pelo próprio ledger (taxa de associação creditada na conta de cotas), como uma corrida faria.
+   * `at` permite recuar a data (ex.: cotas que o sócio já tinha no fim de um ano passado).
+   */
+  async giveQuotas(userId: string, quotas: number, at = new Date()) {
+    if (quotas <= 0) return;
+    const cents = quotas * 500;
+    await this.prisma.ledgerTransaction.create({
+      data: {
+        kind: 'RIDE_SETTLEMENT',
+        reference: `teste-cotas-${userId}-${++this.quotaSeq}`,
+        createdAt: at,
+        postings: {
+          create: [
+            { account: 'PARTNER_RECEIVABLE', direction: 'DEBIT', amountCents: cents },
+            { account: `WORKER_QUOTAS:${userId}`, direction: 'CREDIT', amountCents: cents },
+          ],
+        },
+      },
+    });
+  }
+
+  /** Sócio: motorista aprovado com `quotas` cotas no ledger. */
+  async member(name = 'Sócio', quotas = 5, opts: Parameters<TestApp['driver']>[1] = {}) {
+    const d = await this.driver(name, opts);
+    await this.giveQuotas(d.id, quotas);
+    return d;
   }
 
   /** Motorista de carro, aprovado, pronto para corridas. */

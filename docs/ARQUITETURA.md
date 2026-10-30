@@ -102,6 +102,15 @@ Não há módulo paralelo: a corrida **é** um `Delivery` com `kind = CORRIDA` (
 | `mobile/src/safety`                                                 | `ReportCard` e `RateCard`, usados pelos dois apps. `EmergencyButton` (em `driver/components`) também é usado pelo passageiro                                 |
 | `mobile/src/driver/components/RideEligibilityCard.tsx`              | Conta do motorista: habilitação por veículo, envio dos documentos que faltam, autodeclaração de gênero                                                       |
 
+## Associação (Etapa 8)
+
+| Onde                                                                                     | Responsabilidade                                                                                                                                                                                            |
+| ---------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `shared/membership.ts`, `assembly.ts`, `group-purchase.ts`, `insurance.ts`, `surplus.ts` | Regras puras: sócio e progresso de nível, apuração e quórum, fila por pontos e validação das regras votadas, máquina de estados do seguro, cálculo das sobras                                               |
+| `shared/ledger.ts`                                                                       | `buildGroupContribution` e `buildSurplusDistribution` (novas contas `PARTNER_GROUP`, `MEMBER_GROUP`, `ASSOCIATION_SURPLUS`)                                                                                 |
+| `api/src/association`                                                                    | Módulo próprio: `MembersService` (cotas/sócios do ledger), `AssemblyService`, `GroupPurchaseService` + `PurchasePartner` (parceiro simulado), `InsuranceService`, `SurplusService`, agendador de fechamento |
+| `mobile/src/association`                                                                 | Aba “AMMA” do app do motorista: resumo, assembleia, compra coletiva e seguro (cada seção usa `useLoad`)                                                                                                     |
+
 ## Testes
 
 - `pnpm test` — unitários, sem banco (shared e api).

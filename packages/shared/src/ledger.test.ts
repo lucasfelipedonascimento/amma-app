@@ -1,10 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ASSOCIATION_SURPLUS,
   Ledger,
   PARTNER_RECEIVABLE,
   PLATFORM_REVENUE,
   assertBalanced,
+  buildGroupContribution,
   buildRideSettlement,
+  buildSurplusDistribution,
+  memberGroupAccount,
+  partnerGroupAccount,
   workerBalanceAccount,
   workerQuotasAccount,
 } from './ledger';
@@ -124,5 +129,59 @@ describe('Ledger', () => {
         if (p.direction === 'DEBIT') d += p.amountCents;
         else c += p.amountCents;
     expect(d).toBe(c);
+  });
+});
+
+describe('aporte de compra coletiva', () => {
+  const tx = buildGroupContribution({
+    id: 't1',
+    contributionId: 'c1',
+    groupId: 'g1',
+    userId: 'u1',
+    amountCents: 25_000,
+    createdAt: '2026-11-01T12:00:00Z',
+  });
+  it('é uma transação balanceada que só registra (sem tocar nos ganhos do sócio)', () => {
+    expect(() => assertBalanced(tx)).not.toThrow();
+    expect(tx.kind).toBe('GROUP_CONTRIBUTION');
+    expect(tx.reference).toBe('c1');
+    expect(tx.postings.map((p) => p.account)).toEqual([
+      partnerGroupAccount('g1'),
+      memberGroupAccount('g1', 'u1'),
+    ]);
+  });
+  it('soma por grupo e por sócio, e pode ser estornada', () => {
+    const l = new Ledger();
+    l.post(tx);
+    expect(l.debitBalance(partnerGroupAccount('g1'))).toBe(25_000);
+    expect(l.creditBalance(memberGroupAccount('g1', 'u1'))).toBe(25_000);
+    expect(l.creditBalance(workerBalanceAccount('u1'))).toBe(0);
+    l.reverse('t1', 't2', '2026-11-02T12:00:00Z');
+    expect(l.creditBalance(memberGroupAccount('g1', 'u1'))).toBe(0);
+  });
+});
+
+describe('sobras anuais', () => {
+  const build = (shares: { userId: string; amountCents: number }[]) =>
+    buildSurplusDistribution({ id: 't1', runId: 'r1', shares, createdAt: '2026-11-01T12:00:00Z' });
+  it('debita o total e credita a parte de cada sócio', () => {
+    const tx = build([
+      { userId: 'a', amountCents: 700 },
+      { userId: 'b', amountCents: 300 },
+    ]);
+    expect(() => assertBalanced(tx)).not.toThrow();
+    const l = new Ledger();
+    l.post(tx);
+    expect(l.debitBalance(ASSOCIATION_SURPLUS)).toBe(1000);
+    expect(l.creditBalance(workerBalanceAccount('a'))).toBe(700);
+    expect(l.creditBalance(workerBalanceAccount('b'))).toBe(300);
+  });
+  it('parte zero não gera lançamento (valor zero é proibido no ledger)', () => {
+    const tx = build([
+      { userId: 'a', amountCents: 1000 },
+      { userId: 'b', amountCents: 0 },
+    ]);
+    expect(tx.postings).toHaveLength(2);
+    expect(() => assertBalanced(tx)).not.toThrow();
   });
 });

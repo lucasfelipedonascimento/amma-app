@@ -563,3 +563,73 @@ Sem nenhum elegível o pedido segue em `CRIADO` até a janela de busca acabar (`
 ### 13.8 Variáveis e migração
 
 `PUBLIC_BASE_URL` (padrão `http://localhost:3000`): base dos links de compartilhamento. Migração `20261031120000_rides_safety_municipal`: `DeliveryKind`, campos de corrida em `Delivery` (+ `CHECK`: corrida sempre tem tipo de veículo e PIN de 4 dígitos), `Rating` mútua (`driverId` → `rateeId`, `direction`, única por pedido+direção), `PricingConfigVersion.profile`, `DriverProfile.gender*`, novos tipos de documento e as tabelas `TripShare`, `EmergencyAlert`, `Report`, `TripPoint`, `TripRecordAccess`, `MunicipalRulesVersion`.
+
+## 14. Associação (Etapa 8)
+
+Todas as rotas `/association`, `/assembly`, `/purchase-groups` e `/insurance` são de `MOTORISTA`; as `/admin/...` são de `ADMIN`. **Sócio = quem tem ao menos 1 cota no ledger** (o que `GET /association/me` chama de `isMember`). Erros em português, no mesmo formato das outras seções.
+
+### 14.1 Resumo do sócio
+
+- `GET /association/me` → `{ associationRate, rateOptions: [0,2,4], quotaValueCents: 500, quotas, remainderCents, isMember, minQuotasToBeMember, progress: { level, nextLevel, quotasToNext, centsToNext, percent }, history: [{ at, kind, cents }] }`. `percent` é quanto da faixa do nível atual já foi percorrido (Ouro = 100). `history` são os últimos lançamentos da conta de cotas.
+- A taxa continua sendo escolhida em `PUT /driver/association-rate { rate: 0|2|4 }` (seção 4) e vale para as **próximas** corridas.
+- `GET /association/surplus` → sobras que o sócio recebeu, por ano.
+
+### 14.2 Assembleia
+
+| Rota                                   | Quem  | O que faz                                                                                                                                                                      |
+| -------------------------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `POST /admin/assembly/proposals`       | admin | Cria e **abre agora** uma proposta: `{ kind: GERAL \| REGRA_COMPRA_COLETIVA, title, description, closesAt, quorumPercent?, ruleChange? }`. Prazo: de 24 h a 60 dias.           |
+| `GET /assembly/proposals?filter=`      | sócio | Lista (`abertas` ou `encerradas`). Fecha antes as que venceram.                                                                                                                |
+| `GET /assembly/proposals/:id`          | sócio | Proposta, **o seu voto** e, só depois de encerrada, o `result` (`yes`, `no`, `abstain`, `total`, `ballotDigest`, `appliedRulesVersion`).                                       |
+| `PUT /assembly/proposals/:id/vote`     | sócio | `{ choice: SIM \| NAO \| ABSTENCAO }`. Vota ou **muda o voto** até o fechamento. `403` se não for sócio; `409` se a votação já encerrou. Repetir a mesma escolha não faz nada. |
+| `GET /assembly/proposals/:id/my-votes` | sócio | O histórico **do próprio sócio** (voto e mudanças). Nunca o de outros.                                                                                                         |
+
+- **Resultado:** `APROVADA` (mais SIM que NÃO), `REJEITADA` (empate inclusive) ou `SEM_QUORUM` (menos votos que `quorumPercent` dos sócios aptos na abertura, mínimo 1). Abstenção conta para o quórum, não para a maioria.
+- **Sigilo:** a contagem só aparece depois do fechamento; o voto de cada sócio nunca é mostrado a outros.
+- **Regra da compra coletiva:** `ruleChange` é um objeto parcial, ex. `{ "minQuotas": 5, "dayWeight": 3 }` (chaves: `quotaWeight`, `dayWeight`, `minQuotas`, `minContributionCents`; inteiros, limites validados; os dois pesos não podem ser zero). Se a proposta for **aprovada**, nasce uma nova versão das regras (`appliedRulesVersion`).
+- **Fechamento:** feito uma única vez, por rotina (`ASSOCIATION_TICK_MS`, padrão 30 s) ou ao ler a proposta vencida. Depois disso o banco recusa qualquer alteração na proposta, nos votos e no histórico.
+- `GET /admin/assembly/proposals`: mesma lista, para o admin. `GET /admin/purchase-rules`: histórico das versões das regras da compra coletiva.
+
+### 14.3 Compra coletiva
+
+| Rota                                       | Quem  | O que faz                                                                                                                                                                           |
+| ------------------------------------------ | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /admin/purchase-groups`              | admin | `{ name, description?, vehicleType: MOTO \| CARRO, targetCents }` (`targetCents` = preço de **um** veículo).                                                                        |
+| `POST /admin/purchase-groups/:id/award`    | admin | Contempla o **primeiro da fila**, se os aportes confirmados cobrem mais um veículo (`409` se não). Trava o grupo: contemplações simultâneas não gastam o mesmo dinheiro duas vezes. |
+| `POST /admin/purchase-groups/:id/close`    | admin | Encerra o grupo (sem novas entradas nem aportes).                                                                                                                                   |
+| `GET /purchase-groups`                     | sócio | Grupos com `fundedCents`, `queueSize` e a sua situação (`myStatus`).                                                                                                                |
+| `GET /purchase-groups/:id`                 | sócio | Detalhe: regras em vigor, `availableUnits`, **fila** (posição, primeiro nome, cotas, pontos, dias; `isMe`) e contemplações.                                                         |
+| `POST /purchase-groups/:id/join` / `leave` | sócio | Entra (exige o mínimo de cotas da regra) ou sai. Quem **tem aportes** não sai sozinho (`409`). Quem sai e volta recomeça o tempo de fila.                                           |
+| `POST /purchase-groups/:id/contributions`  | sócio | `{ amountCents, idempotencyKey? }`. Pede ao parceiro; só se ele aceitar vira registro **e** lançamento no ledger, juntos. Mesma chave = mesmo aporte.                               |
+| `GET /purchase-groups/:id/contributions`   | sócio | Os aportes do sócio e o total (do ledger).                                                                                                                                          |
+
+- **Fila:** pontos = `cotas × quotaWeight + dias de fila × dayWeight` (padrão 10 e 1; mínimo 1 cota; aporte mínimo R$ 50,00 — **exemplos**, a assembleia decide). Empate: quem entrou antes; depois, o id (ordem estável).
+- **Parceiro simulado** (`PURCHASE_PARTNER=sandbox`, recusado em produção): aceita; **R$ 13,13** → parceiro fora do ar (`503`, nada é gravado); acima de **R$ 10.000,00** → `RECUSADO` (fica registrado, sem ledger). **Nenhum dinheiro se move.** Não existe parceiro real: trocar = implementar `PurchasePartner` (`association/partner.ts`).
+
+### 14.4 Seguro mútuo
+
+| Rota                                                  | Quem  | O que faz                                                                                                                                               |
+| ----------------------------------------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /insurance/claims`                              | sócio | `{ kind: ACIDENTE \| ROUBO_FURTO \| DANOS_VEICULO \| OUTRO, occurredAt, description, requestedCents }`. Nasce `ENVIADA`. Data não pode ser futura.      |
+| `GET /insurance/claims` / `:id`                       | sócio | Os pedidos do próprio sócio, com anexos e **linha do tempo**.                                                                                           |
+| `POST /insurance/claims/:id/attachments`              | sócio | Multipart `file` (JPG, PNG ou PDF, até 5 MB, tipo conferido pelo conteúdo, máx. 8). Só até a decisão.                                                   |
+| `GET /insurance/claims/:id/attachments/:attachmentId` | sócio | Baixa o anexo (só o dono). Admin: `GET /admin/insurance/claims/:id/attachments/:attachmentId`.                                                          |
+| `POST /insurance/claims/:id/cancel`                   | sócio | Cancela até a decisão.                                                                                                                                  |
+| `GET /admin/insurance/claims?status=` / `:id`         | admin | Fila de pedidos (mais antigos primeiro) com quem pediu.                                                                                                 |
+| `POST /admin/insurance/claims/:id/review`             | admin | `ENVIADA → EM_ANALISE`.                                                                                                                                 |
+| `POST /admin/insurance/claims/:id/decision`           | admin | `{ decision: APROVADA \| NEGADA, note, approvedCents? }`. **Motivo obrigatório**; aprovar exige valor entre 1 centavo e o pedido; negar não leva valor. |
+
+- Fluxo: `ENVIADA → EM_ANALISE → APROVADA \| NEGADA`; `CANCELADA` até a decisão. Não pula a análise, e decidido/cancelado é final.
+- **Decisão humana:** a API só registra o que um admin decidiu; nada é aprovado ou negado sozinho. **Quem pediu não analisa nem decide o próprio pedido**, mesmo sendo admin (`403`).
+- **Não há pagamento do seguro:** `APROVADA` só registra o valor aprovado. O pagamento e o fundo do seguro dependem de decisões da associação (ver PROGRESSO).
+
+### 14.5 Sobras anuais (`ADMIN`)
+
+- `POST /admin/surplus/simulate { year, distributableCents, useWeightPercent? }` → **não grava nada**. Devolve `shares` (por sócio: `quotas`, `useCents`, `amountCents`), `totals`, `yearOver`, `alreadyClosed` e um `checksum`.
+- `POST /admin/surplus/close { year, distributableCents, useWeightPercent?, checksum }` → só **depois do fim do ano** (fuso de João Pessoa) e **uma vez por ano**. Recalcula; se o resultado não bater com o `checksum` da simulação (dados mudaram ou valores diferentes), responde `409` mandando simular de novo. Grava o fechamento, as partes e o lançamento `SURPLUS_DISTRIBUTION` no ledger (credita o saldo `WORKER_BALANCE` de cada sócio), tudo numa transação.
+- `GET /admin/surplus/runs` → anos fechados.
+- Regras de cálculo: `docs/REGRAS_FINANCEIRAS.md`, seção 8.
+
+### 14.6 Variáveis e migração
+
+`PURCHASE_PARTNER` (padrão `sandbox`) e `ASSOCIATION_TICK_MS` (padrão `30000`; `0` desliga a rotina — usado nos testes). Migração `20261101120000_associacao`: tabelas de assembleia (`Proposal`, `Vote`, `VoteRecord`, `PurchaseRulesVersion`), compra coletiva (`PurchaseGroup`, `QueueEntry`, `Contribution`, `GroupAward`), seguro (`InsuranceClaim`, `InsuranceAttachment`, `InsuranceEvent`), sobras (`SurplusRun`, `SurplusShare`) e os tipos de ledger `GROUP_CONTRIBUTION` e `SURPLUS_DISTRIBUTION`. O banco **recusa** apagar/alterar: histórico de votos, versões de regras, contemplações, linha do tempo do seguro e sobras; proposta encerrada; voto de proposta encerrada.

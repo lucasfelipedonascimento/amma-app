@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
+import { AssociationScreen } from '../association/AssociationScreen';
 import { TabBar } from './components/TabBar';
 import { ErrorView, LoadingView } from './components/states';
 import { DriverProvider, useDriver } from './DriverProvider';
@@ -9,9 +10,9 @@ import { DriverHome } from './screens/DriverHome';
 import { EarningsScreen } from './screens/EarningsScreen';
 import { LocationConsentScreen } from './screens/LocationConsentScreen';
 
-type TabKey = 'inicio' | 'entrega' | 'ganhos' | 'conta';
+type TabKey = 'inicio' | 'entrega' | 'ganhos' | 'amma' | 'conta';
 
-/** App do motorista aprovado: Início, Entrega (só com pedido em andamento), Ganhos e Conta. */
+/** App do motorista aprovado: Início, Entrega (só com pedido em andamento), Ganhos, AMMA (associação) e Conta. */
 export function DriverApp() {
   return (
     <DriverProvider>
@@ -49,6 +50,7 @@ export function DriverTabs() {
     { key: 'inicio' as const, label: 'Início' },
     ...(d.active ? [{ key: 'entrega' as const, label: 'Entrega', badge: true }] : []),
     { key: 'ganhos' as const, label: 'Ganhos' },
+    { key: 'amma' as const, label: 'AMMA' },
     { key: 'conta' as const, label: 'Conta' },
   ];
 
@@ -58,6 +60,7 @@ export function DriverTabs() {
         {tab === 'inicio' && <DriverHome />}
         {tab === 'entrega' && <ActiveDeliveryScreen />}
         {tab === 'ganhos' && <EarningsScreen />}
+        {tab === 'amma' && <AssociationScreen />}
         {tab === 'conta' && <AccountScreen />}
       </View>
       <TabBar tabs={tabs} current={tab} onChange={setTab} />

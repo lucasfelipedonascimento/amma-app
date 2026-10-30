@@ -160,6 +160,8 @@ enum EmergencyStatus {
 enum LedgerKind {
   RIDE_SETTLEMENT
   REVERSAL
+  GROUP_CONTRIBUTION // Etapa 8: aporte de compra coletiva (registro; o dinheiro vai ao parceiro)
+  SURPLUS_DISTRIBUTION // Etapa 8: fechamento das sobras anuais
 }
 
 enum LedgerDirection {
@@ -200,6 +202,15 @@ model User {
   emergencyAlerts    EmergencyAlert[]
   reportsMade        Report[]         @relation("ReportReporter")
   reportsReceived    Report[]         @relation("ReportReported")
+
+  // Etapa 8: associação
+  proposalsCreated Proposal[]
+  votes            Vote[]
+  voteRecords      VoteRecord[]
+  queueEntries     QueueEntry[]
+  contributions    Contribution[]
+  insuranceClaims  InsuranceClaim[] @relation("ClaimClaimant")
+  surplusShares    SurplusShare[]
 }
 
 // Código de uso único enviado por SMS. Só o hash é guardado.
@@ -712,4 +723,296 @@ model MunicipalRulesVersion {
   createdAt      DateTime @default(now()) @db.Timestamptz(3)
 
   @@index([effectiveFrom])
+}
+
+// ---------------------------------------------------------------------------
+// Etapa 8: associação (assembleia, compra coletiva, seguro mútuo, sobras)
+// Sócio = quem tem ao menos 1 cota no ledger. Registros abaixo marcados "somente inserção" têm
+// gatilho no banco que recusa UPDATE/DELETE (ver a migração associacao).
+// ---------------------------------------------------------------------------
+
+// Deve ficar idêntico a PROPOSAL_KINDS / PROPOSAL_STATUSES / VOTE_CHOICES / CLAIM_KINDS / CLAIM_STATUSES no shared.
+enum ProposalKind {
+  GERAL
+  REGRA_COMPRA_COLETIVA
+}
+
+enum ProposalStatus {
+  ABERTA
+  APROVADA
+  REJEITADA
+  SEM_QUORUM
+}
+
+enum VoteChoice {
+  SIM
+  NAO
+  ABSTENCAO
+}
+
+enum VoteAction {
+  VOTOU
+  MUDOU
+}
+
+enum GroupStatus {
+  ABERTO
+  ENCERRADO
+}
+
+enum QueueEntryStatus {
+  NA_FILA
+  CONTEMPLADO
+  DESISTIU
+}
+
+enum ContributionStatus {
+  CONFIRMADO
+  RECUSADO
+}
+
+enum ClaimKind {
+  ACIDENTE
+  ROUBO_FURTO
+  DANOS_VEICULO
+  OUTRO
+}
+
+enum ClaimStatus {
+  ENVIADA
+  EM_ANALISE
+  APROVADA
+  NEGADA
+  CANCELADA
+}
+
+// Proposta da assembleia. Depois de fechada (status != ABERTA) nada mais muda: o banco recusa.
+model Proposal {
+  id            String         @id @default(uuid())
+  kind          ProposalKind
+  title         String
+  description   String
+  // Só REGRA_COMPRA_COLETIVA: a alteração proposta, ex. {"minQuotas": 5}. Aplicada se aprovada.
+  ruleChange    Json?
+  quorumPercent Int            @default(0)
+  // Quantos sócios podiam votar quando a proposta abriu (base do quórum).
+  eligibleCount Int
+  opensAt       DateTime       @db.Timestamptz(3)
+  closesAt      DateTime       @db.Timestamptz(3)
+  status        ProposalStatus @default(ABERTA)
+  createdById   String
+  createdAt     DateTime       @default(now()) @db.Timestamptz(3)
+
+  // Resultado, gravado uma única vez no fechamento.
+  closedAt            DateTime? @db.Timestamptz(3)
+  yesCount            Int?
+  noCount             Int?
+  abstainCount        Int?
+  // SHA-256 dos votos (sócio + escolha) em ordem fixa: prova de que o resultado bate com a apuração.
+  ballotDigest        String?
+  appliedRulesVersion String?
+
+  createdBy User         @relation(fields: [createdById], references: [id])
+  votes     Vote[]
+  records   VoteRecord[]
+
+  @@index([status, closesAt])
+}
+
+// Voto atual de um sócio (1 por proposta). Pode ser trocado até o fechamento; depois o banco recusa.
+model Vote {
+  id         String     @id @default(uuid())
+  proposalId String
+  voterId    String
+  choice     VoteChoice
+  castAt     DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime   @default(now()) @db.Timestamptz(3)
+
+  proposal Proposal @relation(fields: [proposalId], references: [id])
+  voter    User     @relation(fields: [voterId], references: [id])
+
+  @@unique([proposalId, voterId])
+}
+
+// Histórico imutável de votos (somente inserção): cada voto e cada mudança, em ordem.
+model VoteRecord {
+  id         String     @id @default(uuid())
+  proposalId String
+  voterId    String
+  choice     VoteChoice
+  action     VoteAction
+  createdAt  DateTime   @default(now()) @db.Timestamptz(3)
+
+  proposal Proposal @relation(fields: [proposalId], references: [id])
+  voter    User     @relation(fields: [voterId], references: [id])
+
+  @@index([proposalId, createdAt])
+  @@index([voterId])
+}
+
+// Regras da compra coletiva em vigor. Versões nunca são editadas (somente inserção): mudar = nova versão,
+// que só nasce de proposta aprovada na assembleia. Sem versão vale DEFAULT_PURCHASE_RULES.
+model PurchaseRulesVersion {
+  id            String   @id @default(uuid())
+  rules         Json
+  proposalId    String?  @unique
+  effectiveFrom DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([effectiveFrom])
+}
+
+// Grupo de compra coletiva de veículos (uma fila por grupo).
+model PurchaseGroup {
+  id          String      @id @default(uuid())
+  name        String
+  description String?
+  vehicleType VehicleType
+  // Preço de UM veículo; a cada múltiplo aportado o grupo pode contemplar mais um sócio.
+  targetCents Int
+  status      GroupStatus @default(ABERTO)
+  createdById String
+  createdAt   DateTime    @default(now()) @db.Timestamptz(3)
+
+  entries       QueueEntry[]
+  contributions Contribution[]
+  awards        GroupAward[]
+}
+
+model QueueEntry {
+  id       String           @id @default(uuid())
+  groupId  String
+  userId   String
+  status   QueueEntryStatus @default(NA_FILA)
+  // Quando entrou (de novo, se saiu e voltou): é daqui que conta o tempo de fila.
+  joinedAt DateTime         @default(now()) @db.Timestamptz(3)
+  leftAt   DateTime?        @db.Timestamptz(3)
+
+  group PurchaseGroup @relation(fields: [groupId], references: [id])
+  user  User          @relation(fields: [userId], references: [id])
+  award GroupAward?
+
+  @@unique([groupId, userId])
+  @@index([groupId, status])
+}
+
+// Aporte do sócio ao grupo. O dinheiro vai ao parceiro regulado; aqui fica o registro e o ledger.
+model Contribution {
+  id             String             @id @default(uuid())
+  groupId        String
+  userId         String
+  amountCents    Int
+  status         ContributionStatus
+  partner        String
+  partnerRef     String?
+  declineReason  String?
+  idempotencyKey String?
+  createdAt      DateTime           @default(now()) @db.Timestamptz(3)
+
+  group PurchaseGroup @relation(fields: [groupId], references: [id])
+  user  User          @relation(fields: [userId], references: [id])
+
+  @@unique([userId, idempotencyKey])
+  @@index([groupId, status])
+}
+
+// Contemplação registrada pela associação (somente inserção).
+model GroupAward {
+  id          String   @id @default(uuid())
+  groupId     String
+  entryId     String   @unique
+  userId      String
+  position    Int
+  score       Int
+  fundedCents Int
+  awardedById String
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  group PurchaseGroup @relation(fields: [groupId], references: [id])
+  entry QueueEntry    @relation(fields: [entryId], references: [id])
+
+  @@index([groupId])
+}
+
+// Pedido de seguro mútuo. A decisão é humana (decidedById, nunca o próprio sócio).
+model InsuranceClaim {
+  id             String      @id @default(uuid())
+  claimantId     String
+  kind           ClaimKind
+  occurredAt     DateTime    @db.Timestamptz(3)
+  description    String
+  requestedCents Int
+  status         ClaimStatus @default(ENVIADA)
+  decidedById    String?
+  decidedAt      DateTime?   @db.Timestamptz(3)
+  decisionNote   String?
+  approvedCents  Int?
+  createdAt      DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime    @updatedAt @db.Timestamptz(3)
+
+  claimant    User                  @relation("ClaimClaimant", fields: [claimantId], references: [id])
+  attachments InsuranceAttachment[]
+  events      InsuranceEvent[]
+
+  @@index([claimantId, createdAt])
+  @@index([status, createdAt])
+}
+
+model InsuranceAttachment {
+  id         String   @id @default(uuid())
+  claimId    String
+  storageKey String
+  mimeType   String
+  sizeBytes  Int
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  claim InsuranceClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+
+  @@index([claimId])
+}
+
+// Linha do tempo do pedido (somente inserção): o que o sócio vê no acompanhamento.
+model InsuranceEvent {
+  id         String       @id @default(uuid())
+  claimId    String
+  actorId    String
+  fromStatus ClaimStatus?
+  toStatus   ClaimStatus
+  note       String?
+  createdAt  DateTime     @default(now()) @db.Timestamptz(3)
+
+  claim InsuranceClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+
+  @@index([claimId, createdAt])
+}
+
+// Fechamento de sobras de um ano (um por ano; somente inserção).
+model SurplusRun {
+  id                 String   @id @default(uuid())
+  year               Int      @unique
+  distributableCents Int
+  useWeightPercent   Int
+  totalUseCents      Int
+  totalQuotas        Int
+  memberCount        Int
+  // Resumo da simulação aprovada; o fechamento só vale se os dados não mudaram desde a simulação.
+  checksum           String
+  closedById         String
+  closedAt           DateTime @default(now()) @db.Timestamptz(3)
+
+  shares SurplusShare[]
+}
+
+model SurplusShare {
+  id          String @id @default(uuid())
+  runId       String
+  userId      String
+  quotas      Int
+  useCents    Int
+  amountCents Int
+
+  run  SurplusRun @relation(fields: [runId], references: [id])
+  user User       @relation(fields: [userId], references: [id])
+
+  @@unique([runId, userId])
+  @@index([userId])
 }

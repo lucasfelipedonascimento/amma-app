@@ -69,6 +69,10 @@ export class AccountService {
       where: { userId },
       select: { storageKey: true },
     });
+    const claimFiles = await this.prisma.insuranceAttachment.findMany({
+      where: { claim: { claimantId: userId } },
+      select: { storageKey: true },
+    });
     await this.prisma.$transaction([
       this.prisma.deliveryOffer.updateMany({
         where: { driverId: userId, status: 'PENDENTE' },
@@ -94,6 +98,17 @@ export class AccountService {
         },
       }),
       this.prisma.emergencyAlert.updateMany({ where: { userId }, data: { note: null } }),
+      // Associação (Etapa 8): votos, aportes, sobras e decisões ficam (registro da assembleia e contábil),
+      // sem identificação. Saem da fila, e o seguro perde o texto livre e os anexos (dados sensíveis).
+      this.prisma.queueEntry.updateMany({
+        where: { userId, status: 'NA_FILA' },
+        data: { status: 'DESISTIU', leftAt: new Date() },
+      }),
+      this.prisma.insuranceAttachment.deleteMany({ where: { claim: { claimantId: userId } } }),
+      this.prisma.insuranceClaim.updateMany({
+        where: { claimantId: userId },
+        data: { description: '(removido a pedido do titular)' },
+      }),
       this.prisma.driverPresence.deleteMany({ where: { userId } }),
       this.prisma.document.deleteMany({ where: { userId } }),
       this.prisma.vehicle.deleteMany({ where: { userId } }),
@@ -108,6 +123,6 @@ export class AccountService {
     ]);
     await this.positions.remove(userId);
     // Arquivos só depois do banco confirmar.
-    await Promise.all(docs.map((d) => this.storage.remove(d.storageKey)));
+    await Promise.all([...docs, ...claimFiles].map((d) => this.storage.remove(d.storageKey)));
   }
 }

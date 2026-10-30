@@ -139,6 +139,20 @@ Motorista (`...0007`):
 - [ ] **Conta → Corridas de passageiro:** lista cada veículo com “Habilitado” ou o que falta (idade do veículo, documento…), botão **Enviar:** para os documentos pedidos, e a declaração de gênero (Feminino mostra “Aguardando a conferência” até o admin conferir). Com as regras padrão aparece o aviso **“NÃO confirmados”**.
 - [ ] Motorista de moto (`...0003`) **não** recebe corrida de carro; recebe entregas normalmente.
 
+### Roteiro H — Associação (Etapa 8)
+
+Motorista `+5583999990003` (12 cotas no seed) e, para comparar, `...0007` (35 cotas). Para dar cotas a outro motorista ou abrir votações/grupos, use a API de admin (`docs/API.md` seção 14). Aba **AMMA**.
+
+- [ ] **Resumo:** nível (Bronze/Prata/Ouro), cotas, barra de progresso e “Faltam N cotas … para o nível Prata”. Motorista sem cota vê “Você ainda não é sócio”.
+- [ ] **Taxa:** tocar em 0% / 2% / 4% grava na hora; a escolha continua marcada ao reabrir. Vale para a próxima corrida concluída (confira a cota na tela depois).
+- [ ] **Assembleia:** a proposta de exemplo aparece como “Votação aberta”. Abra, vote **Sim**, volte e reabra: “Seu voto atual: Sim”. Mude para **Não**: vale o último. Não há contagem enquanto estiver aberta.
+- [ ] Com a votação vencida (admin cria uma com prazo de 24 h e você espera, ou ajuste no banco), a proposta mostra o **resultado**, o seu voto e nenhum botão de voto.
+- [ ] **Compra:** “Motos 2027 (exemplo)” → entrar na fila mostra a **posição** e os pontos; os dois sócios do seed aparecem ordenados por cotas e dias. Sair da fila só sem aportes.
+- [ ] **Aporte:** valor abaixo do mínimo é recusado na tela; R$ 100,00 aparece como confirmado e entra no “Total aportado”. R$ 13,13 simula parceiro fora do ar (mensagem; nada registrado) e acima de R$ 10.000,00 simula recusa. O texto **“SIMULAÇÃO: nenhum dinheiro é movimentado”** está visível.
+- [ ] **Seguro:** “Novo pedido de seguro” valida data (dd/mm/aaaa), texto e valor; depois de enviado abre o acompanhamento. **Anexar foto** (galeria) envia o arquivo e aumenta “Anexos”. **Cancelar pedido** encerra.
+- [ ] Peça ao admin para analisar e decidir (API): a linha do tempo ganha “Em análise” e depois “Aprovado/Negado” com o **motivo escrito por uma pessoa**; aprovado mostra o valor aprovado e os botões de anexar/cancelar somem.
+- [ ] **Sobras:** depois de o admin fechar um ano, o resumo lista “Sobras de AAAA”, o valor e o peso do uso.
+
 ## 4. Problemas comuns
 
 | Sintoma                              | Causa provável                                                                                                                                |

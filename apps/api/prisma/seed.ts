@@ -115,6 +115,57 @@ async function ridePricing() {
     });
 }
 
+// Associação (Etapa 8), só para ver as telas: dois sócios com cotas, um grupo de compra e uma proposta aberta.
+// Os dados reais (cotas) nascem das corridas; aqui as cotas entram direto no ledger, uma vez só.
+async function association() {
+  for (const [phone, quotas] of [
+    ['+5583999990003', 12],
+    ['+5583999990007', 35],
+  ] as const) {
+    const u = await prisma.user.findUniqueOrThrow({ where: { phone } });
+    const reference = `seed-cotas-${u.id}`;
+    if (await prisma.ledgerTransaction.findFirst({ where: { kind: 'RIDE_SETTLEMENT', reference } }))
+      continue;
+    await prisma.ledgerTransaction.create({
+      data: {
+        kind: 'RIDE_SETTLEMENT',
+        reference,
+        postings: {
+          create: [
+            { account: 'PARTNER_RECEIVABLE', direction: 'DEBIT', amountCents: quotas * 500 },
+            { account: `WORKER_QUOTAS:${u.id}`, direction: 'CREDIT', amountCents: quotas * 500 },
+          ],
+        },
+      },
+    });
+  }
+  const admin = await prisma.user.findUniqueOrThrow({ where: { phone: '+5583999990001' } });
+  if (!(await prisma.purchaseGroup.findFirst({ where: { name: 'Motos 2027 (exemplo)' } })))
+    await prisma.purchaseGroup.create({
+      data: {
+        name: 'Motos 2027 (exemplo)',
+        description: 'Grupo de exemplo. O valor e as regras reais são da associação e do parceiro.',
+        vehicleType: 'MOTO',
+        targetCents: 20_000_00,
+        createdById: admin.id,
+      },
+    });
+  if (!(await prisma.proposal.findFirst({ where: { title: 'Proposta de exemplo' } }))) {
+    const opensAt = new Date();
+    await prisma.proposal.create({
+      data: {
+        kind: 'GERAL',
+        title: 'Proposta de exemplo',
+        description: 'Votação de exemplo para testar o app. Cada sócio tem um voto.',
+        opensAt,
+        closesAt: new Date(opensAt.getTime() + 7 * 86_400_000),
+        eligibleCount: 2,
+        createdById: admin.id,
+      },
+    });
+  }
+}
+
 async function main() {
   await pricing();
   await ridePricing();
@@ -149,8 +200,9 @@ async function main() {
     ],
     { vehicle: 'CARRO', woman: true },
   );
+  await association();
   console.log(
-    'Seed concluído. Telefones: admin ...0001, passageira ...0002, aprovado (moto) ...0003, pendente ...0004, reprovado ...0005, comerciante ...0006, motorista de carro (mulher verificada) ...0007',
+    'Seed concluído. Telefones: admin ...0001, passageira ...0002, aprovado (moto) ...0003, pendente ...0004, reprovado ...0005, comerciante ...0006, motorista de carro (mulher verificada) ...0007. Sócios de exemplo (com cotas): ...0003 e ...0007',
   );
 }
 

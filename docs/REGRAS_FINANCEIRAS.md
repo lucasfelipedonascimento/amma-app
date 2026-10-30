@@ -91,3 +91,25 @@ Código: `packages/shared/src/ride.ts`, `apps/api/src/rides`. **O dinheiro não 
 - **Estimativa:** o passageiro vê o preço de cada tipo liberado antes de pedir; o pedido envia `expectedFareCents` e é recusado (409) se a tabela mudou.
 - **Cancelamento:** até o embarque (`A_CAMINHO_COLETA`) o passageiro cancela com estorno total; depois de embarcar só o motorista (`ENTREGA_IMPOSSIVEL`) ou o admin encerram. Segue sem multa nem ressarcimento ao motorista (pendência da Etapa 6, agora mais visível: o motorista que foi buscar o passageiro e ele cancelou não recebe nada).
 - **Ledger e ganhos:** corridas aparecem nos ganhos, no histórico e na carteira do motorista como qualquer pedido concluído.
+
+## 8. Associação (Etapa 8)
+
+Código: `packages/shared/src/{membership,assembly,group-purchase,insurance,surplus}.ts` e `ledger.ts`; serviços em `apps/api/src/association`. **A AMMA continua sem captar dinheiro nem conceder crédito:** aportes e sobras são **registros contábeis** no ledger; o dinheiro real fica com o parceiro regulado.
+
+- **Sócio e nível:** sócio = ao menos 1 cota. Bronze 0–29, Prata 30–59, Ouro 60+. Progresso = `(cotas − início do nível) ÷ (início do próximo − início do nível)`; o que falta em centavos desconta a fração de cota já acumulada. Cotas são sempre lidas do ledger.
+- **Aporte da compra coletiva** (`GROUP_CONTRIBUTION`, referência = id do aporte):
+  ```
+  DÉBITO  PARTNER_GROUP:<grupo>          valor   (registrado no parceiro; não é caixa da AMMA)
+  CRÉDITO MEMBER_GROUP:<grupo>:<sócio>   valor   (quanto o sócio já aportou no grupo)
+  ```
+  Só nasce depois que o parceiro aceita, na mesma transação que grava o aporte. Não toca em `WORKER_BALANCE` nem em cotas. Aporte recusado fica registrado e **não** vai ao ledger.
+- **Fila:** `pontos = cotas × peso_da_cota + dias_completos_de_fila × peso_do_dia`; mais pontos primeiro, empate = entrou antes, depois id. Pesos, mínimo de cotas e aporte mínimo são **configuração votada em assembleia** (versões somente inserção). A contemplação exige `aportes confirmados ÷ valor do veículo` maior que as já feitas.
+- **Sobras anuais** (`SURPLUS_DISTRIBUTION`, referência = id do fechamento):
+  ```
+  DÉBITO  ASSOCIATION_SURPLUS            total distribuído
+  CRÉDITO WORKER_BALANCE:<sócio>         parte de cada sócio (omitido se 0)
+  ```
+  - **Entrada:** o valor a distribuir é **informado pela associação** depois de fechar as contas do ano; o app não calcula resultado nem lucro.
+  - **Sócios do ano:** quem tinha ≥ 1 cota **no fim do ano** (fuso UTC−3) e conta ativa. **Uso** = soma do valor bruto (`fareCents`) das entregas e corridas `ENTREGUE` no ano.
+  - **Parte** = `total × ( p_uso × uso_i/Σuso + (100 − p_uso) × cotas_i/Σcotas ) ÷ 100`, em aritmética inteira exata (BigInt). Os centavos que sobram do arredondamento vão, um a um, para os **maiores restos** (empate: id), então a soma das partes é **sempre igual ao total**. `p_uso` padrão: 50%. Sem nenhum uso no ano, tudo vai pelas cotas.
+  - **Simulação obrigatória:** o fechamento exige o `checksum` da simulação e só vale depois do fim do ano, uma vez por ano. Fechado, não muda (gatilho no banco); corrigir = lançamento novo, com decisão da associação.
