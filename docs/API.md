@@ -260,10 +260,11 @@ Se um evento se perder, o REST sempre devolve o estado atual (`GET /driver/offer
 
 Interface `RouteProvider.route(origem, destino) → { distanceMeters, durationSeconds }`.
 
-| `ROUTE_PROVIDER`     | Comportamento                                                                                                                                |
-| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `simulated` (padrão) | Determinístico, sem rede: reta × 1,3, a 25 km/h. **Recusado com `NODE_ENV=production`.**                                                     |
-| `mapbox`             | Mapbox Directions (`driving`), exige `MAPBOX_ACCESS_TOKEN`; timeout de 5 s; arredonda para cima; o token nunca aparece em mensagens de erro. |
+| `ROUTE_PROVIDER`     | Comportamento                                                                                                                                        |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `simulated` (padrão) | Determinístico, sem rede: reta × 1,3, a 25 km/h. **Recusado com `NODE_ENV=production`.**                                                             |
+| `osrm`               | OSRM (`driving`), sem chave; `OSRM_URL` opcional. O servidor público é só para desenvolvimento (recusado em produção). Devolve o traçado pelas ruas. |
+| `mapbox`             | Mapbox Directions (`driving`), exige `MAPBOX_ACCESS_TOKEN`; timeout de 5 s; arredonda para cima; o token nunca aparece em mensagens de erro.         |
 
 O adaptador do Mapbox foi testado com respostas simuladas, **não** contra a API real (sem chave). Para usar Google Routes basta implementar a mesma interface.
 

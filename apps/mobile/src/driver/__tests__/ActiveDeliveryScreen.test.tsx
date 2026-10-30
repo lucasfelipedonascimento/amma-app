@@ -86,23 +86,56 @@ describe('Entrega em andamento', () => {
     expect(screen.getByTestId('target-address').props.children).toBe('Rua da Entrega, 200');
   });
 
-  it('até a coleta dá para liberar o pedido (com confirmação); depois não', async () => {
-    const release = jest.fn(async () => undefined);
-    await renderScreen('A_CAMINHO_COLETA', { release });
-    await fireEvent.press(screen.getByText('Não consigo seguir'));
-    expect(Alert.alert).toHaveBeenCalledTimes(1);
-    expect(release).not.toHaveBeenCalled(); // só depois de confirmar
-    const buttons = (Alert.alert as jest.Mock).mock.calls[0][2] as {
-      text: string;
-      onPress?: () => void;
-    }[];
-    buttons.find((b) => b.text === 'Liberar pedido')!.onPress!();
-    expect(release).toHaveBeenCalledTimes(1);
+  it('abre direto no mapa em tela cheia, com Cancelar e Detalhes', async () => {
+    await renderScreen('A_CAMINHO_COLETA');
+    expect(screen.getByTestId('map')).toBeTruthy();
+    expect(screen.getByText('Cancelar')).toBeTruthy();
+    expect(screen.queryByText('Buscando')).toBeNull();
+    await fireEvent.press(screen.getByText('Detalhes'));
+    expect(screen.getByText('‹ Ver mapa')).toBeTruthy();
+    await fireEvent.press(screen.getByText('‹ Ver mapa'));
+    expect(screen.queryByText('‹ Ver mapa')).toBeNull();
   });
 
-  it('depois de coletar não existe "Não consigo seguir"', async () => {
+  it('antes da coleta o menu de motivos oferece liberar (volta à fila) e cancelar', async () => {
+    const cancelTrip = jest.fn(async () => true);
+    await renderScreen('A_CAMINHO_COLETA', { cancelTrip });
+    await fireEvent.press(screen.getByText('Cancelar'));
+    expect(screen.getByText('Por que você quer cancelar?')).toBeTruthy();
+    expect(screen.getByLabelText('Problema com o veículo')).toBeTruthy();
+    expect(screen.getByLabelText('Cliente não apareceu ou não atende')).toBeTruthy();
+    // sem motivo escolhido, não confirma
+    expect(
+      screen.getByRole('button', { name: 'Confirmar cancelamento' }).props.accessibilityState,
+    ).toMatchObject({ disabled: true });
+    await fireEvent.press(screen.getByLabelText('Problema com o veículo'));
+    expect(screen.getByText(/volta para a fila/)).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Confirmar cancelamento' }));
+    expect(cancelTrip).toHaveBeenCalledWith('PROBLEMA_VEICULO', 'RELEASE');
+  });
+
+  it('cliente que não apareceu cancela o pedido (efeito CANCEL)', async () => {
+    const cancelTrip = jest.fn(async () => true);
+    await renderScreen('A_CAMINHO_COLETA', { cancelTrip });
+    await fireEvent.press(screen.getByText('Cancelar'));
+    await fireEvent.press(screen.getByLabelText('Cliente não apareceu ou não atende'));
+    expect(screen.getByText(/estorno/)).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Confirmar cancelamento' }));
+    expect(cancelTrip).toHaveBeenCalledWith('CLIENTE_NAO_APARECEU', 'CANCEL');
+  });
+
+  it('logo após aceitar (ACEITO) só dá para liberar; depois de coletar só cancelar', async () => {
+    await renderScreen('ACEITO');
+    await fireEvent.press(screen.getByText('Cancelar'));
+    expect(screen.queryByLabelText('Cliente não apareceu ou não atende')).toBeNull();
+    expect(screen.getByLabelText('Aceitei sem querer')).toBeTruthy();
+  });
+
+  it('depois de coletar também há Cancelar, com motivos de entrega', async () => {
     await renderScreen('COLETADO');
-    expect(screen.queryByText('Não consigo seguir')).toBeNull();
+    await fireEvent.press(screen.getByText('Cancelar'));
+    expect(screen.getByLabelText('Destinatário ausente')).toBeTruthy();
+    expect(screen.queryByLabelText('Aceitei sem querer')).toBeNull();
   });
 
   it('botão de emergência pede confirmação e oferece 190, 192 e 193', async () => {

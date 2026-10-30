@@ -6,6 +6,7 @@ import { Button } from '../../ui';
 import type { Coords, Place } from '../types';
 
 const EDGE = { top: 60, right: 50, bottom: 60, left: 50 };
+const NO_INSET = { top: 0, bottom: 0 };
 
 /**
  * Mapa da entrega: motorista (ponto vermelho), coleta (verde), entrega (preto) e a rota.
@@ -17,12 +18,18 @@ export function RouteMap({
   dropoff,
   target,
   path,
+  fill,
+  inset,
 }: {
   driver: Coords | null;
   pickup: Place;
   dropoff: Place;
   target: 'COLETA' | 'ENTREGA';
   path: Coords[] | null;
+  /** Ocupa a tela toda em vez de uma caixa de 280 px. */
+  fill?: boolean;
+  /** Espaço (px) coberto por painéis sobre o mapa, para o enquadramento não ficar escondido. */
+  inset?: { top: number; bottom: number };
 }) {
   const ref = useRef<MapView>(null);
   const [follow, setFollow] = useState(true);
@@ -34,7 +41,11 @@ export function RouteMap({
       latitude: p.lat,
       longitude: p.lng,
     }));
-    ref.current?.fitToCoordinates(points, { edgePadding: EDGE, animated: true });
+    const pad = inset ?? NO_INSET;
+    ref.current?.fitToCoordinates(points, {
+      edgePadding: { ...EDGE, top: EDGE.top + pad.top, bottom: EDGE.bottom + pad.bottom },
+      animated: true,
+    });
     // Só refaz o enquadramento quando o destino ou a rota mudam, não a cada posição.
   }, [destination.lat, destination.lng, path]);
 
@@ -48,7 +59,7 @@ export function RouteMap({
   }, [follow, driver]);
 
   return (
-    <View style={s.wrap}>
+    <View style={fill ? s.fill : s.wrap}>
       <MapView
         ref={ref}
         style={s.map}
@@ -105,6 +116,7 @@ export function RouteMap({
 }
 
 const s = StyleSheet.create({
+  fill: { flex: 1, backgroundColor: colors.border },
   wrap: { height: 280, borderRadius: 14, overflow: 'hidden', backgroundColor: colors.border },
   map: { flex: 1 },
   me: {

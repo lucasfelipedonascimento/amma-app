@@ -1,6 +1,7 @@
 import {
   ASSOCIATION_RATES,
   BOARDING_PIN_LENGTH,
+  CANCEL_CATEGORY_KEYS,
   CANCEL_REASONS,
   DECLINE_REASONS,
   DELIVERY_STATUSES,
@@ -93,7 +94,13 @@ export class RefundDto {
 
 export class CancelDto {
   @IsIn(CANCEL_REASONS) reason!: CancelReason;
+  /** Motivo escolhido no menu do app (ex.: MUDEI_DE_IDEIA). Conferido por ator no serviço. */
+  @IsOptional() @IsIn(CANCEL_CATEGORY_KEYS) category?: string;
   @IsOptional() @IsString() @MaxLength(280) note?: string;
+}
+
+export class ReleaseDto {
+  @IsOptional() @IsIn(CANCEL_CATEGORY_KEYS) category?: string;
 }
 
 export class ListDeliveriesQuery {

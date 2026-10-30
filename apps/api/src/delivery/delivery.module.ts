@@ -32,6 +32,7 @@ import { AdminOpsController } from './admin-ops.controller';
 import { DeliveryController } from './delivery.controller';
 import { DeliveryService } from './delivery.service';
 import { DriverOpsController } from './driver-ops.controller';
+import { SimulatorController } from './simulator.controller';
 
 /** Entregas, corridas de passageiro, despacho, presença do motorista, tempo real, ledger e segurança (Etapas 4 a 7). */
 @Module({
@@ -40,6 +41,7 @@ import { DriverOpsController } from './driver-ops.controller';
     DeliveryController,
     DriverOpsController,
     AdminOpsController,
+    SimulatorController,
     DispatchController,
     PaymentsController,
     RidesController,

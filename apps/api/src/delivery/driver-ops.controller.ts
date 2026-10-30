@@ -30,6 +30,7 @@ import {
   LatLngDto,
   PushTokenDto,
   RatingDto,
+  ReleaseDto,
   RouteQuery,
 } from './dto';
 import { DriverAppService } from './driver-app.service';
@@ -129,8 +130,8 @@ export class DriverOpsController {
 
   @Post('deliveries/:id/release')
   @HttpCode(204)
-  release(@Req() req: Req_, @Param('id', ParseUUIDPipe) id: string) {
-    return this.dispatch.release(req.user.id, id);
+  release(@Req() req: Req_, @Param('id', ParseUUIDPipe) id: string, @Body() dto?: ReleaseDto) {
+    return this.dispatch.release(req.user.id, id, dto?.category);
   }
 
   /** O motorista avalia o passageiro (só corrida de passageiro, depois de concluída). */

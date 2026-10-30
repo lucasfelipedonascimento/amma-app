@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Alert, StyleSheet, Text } from 'react-native';
-import { formatBRL } from '@amma/shared';
+import { StyleSheet, Text } from 'react-native';
+import { clientCancelOptions, formatBRL } from '@amma/shared';
+import { CancelReasonModal } from '../../CancelReasonModal';
 import { api } from '../../api';
 import { errorMessage } from '../../errors';
 import { colors } from '../../theme';
@@ -39,6 +40,7 @@ export function TrackingScreen({
   const { realtime, offline, reloadDeliveries } = useClient();
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [cancelOpen, setCancelOpen] = useState(false);
 
   if (!d)
     return error ? (
@@ -49,33 +51,20 @@ export function TrackingScreen({
 
   const ride = d.kind === 'CORRIDA';
   const what = ride ? 'corrida' : 'pedido';
-  const cancel = () =>
-    Alert.alert(
-      `Cancelar ${what}?`,
-      d.payment?.status === 'PAGO'
-        ? 'O valor pago será devolvido (estorno).'
-        : `${ride ? 'A corrida' : 'O pedido'} será cancelado.`,
-      [
-        { text: 'Manter', style: 'cancel' },
-        {
-          text: `Cancelar ${what}`,
-          style: 'destructive',
-          onPress: async () => {
-            setBusy(true);
-            setActionError(null);
-            try {
-              await api(`/deliveries/${id}/cancel`, { body: { reason: 'CLIENTE_DESISTIU' } });
-              await reload();
-              void reloadDeliveries();
-            } catch (e) {
-              setActionError(errorMessage(e));
-            } finally {
-              setBusy(false);
-            }
-          },
-        },
-      ],
-    );
+  const confirmCancel = async (category: string) => {
+    setBusy(true);
+    setActionError(null);
+    try {
+      await api(`/deliveries/${id}/cancel`, { body: { reason: 'CLIENTE_DESISTIU', category } });
+      setCancelOpen(false);
+      await reload();
+      void reloadDeliveries();
+    } catch (e) {
+      setActionError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const pixPending =
     d.payment?.method === 'PIX' && d.payment.status === 'PENDENTE' && d.status === 'CRIADO';
@@ -93,6 +82,15 @@ export function TrackingScreen({
         <Text style={s.muted}>{cancelText(d.kind, d.cancelReason)}</Text>
       ) : null}
       {d.status !== 'CANCELADO' ? <ClientSteps delivery={d} /> : null}
+      <ErrorText message={cancelOpen ? null : actionError} />
+      {canClientCancel(d.status) ? (
+        <Button
+          title={`Cancelar ${what}`}
+          kind="danger"
+          onPress={() => setCancelOpen(true)}
+          loading={busy && !cancelOpen}
+        />
+      ) : null}
 
       {pixPending && d.payment ? (
         <PixPanel deliveryId={d.id} payment={d.payment} onPaid={() => void reload()} />
@@ -119,13 +117,24 @@ export function TrackingScreen({
 
       {ride && d.driver ? <RideSafetyCard d={d} active={live} /> : null}
 
-      <ErrorText message={actionError} />
-      {canClientCancel(d.status) ? (
-        <Button title={`Cancelar ${what}`} kind="danger" onPress={cancel} loading={busy} />
-      ) : null}
       {d.payment && (d.payment.status === 'PAGO' || d.payment.status === 'ESTORNADO') ? (
         <Button title="Ver recibo" kind="ghost" onPress={onReceipt} />
       ) : null}
+      <CancelReasonModal
+        visible={cancelOpen}
+        title="Por que você quer cancelar?"
+        message={
+          d.payment?.status === 'PAGO'
+            ? 'O valor pago será devolvido (estorno).'
+            : `${ride ? 'A corrida' : 'O pedido'} será cancelado.`
+        }
+        options={clientCancelOptions(d.status)}
+        confirmLabel="Confirmar cancelamento"
+        busy={busy}
+        error={actionError}
+        onClose={() => setCancelOpen(false)}
+        onConfirm={(key) => void confirmCancel(key)}
+      />
     </Page>
   );
 }

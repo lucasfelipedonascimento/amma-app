@@ -88,7 +88,52 @@ export class MapboxRouteProvider implements RouteProvider {
   }
 }
 
-/** ROUTE_PROVIDER=simulated (padrão) | mapbox. O simulado é recusado em produção. */
+/**
+ * OSRM (perfil "driving"), sem chave. O servidor público (router.project-osrm.org) é só para
+ * desenvolvimento e testes: não tem garantia de disponibilidade. Em produção, use Mapbox ou um OSRM próprio.
+ */
+export class OsrmRouteProvider implements RouteProvider {
+  constructor(
+    private readonly baseUrl: string,
+    private readonly fetchFn: typeof fetch = fetch,
+    private readonly timeoutMs = 8000,
+  ) {}
+
+  async route(origin: GeoPoint, destination: GeoPoint, opts?: RouteOptions): Promise<RouteResult> {
+    const overview = opts?.withPath ? 'overview=full&geometries=geojson' : 'overview=false';
+    const coords = `${origin.lng},${origin.lat};${destination.lng},${destination.lat}`;
+    const url = `${this.baseUrl.replace(/\/$/, '')}/route/v1/driving/${coords}?${overview}`;
+    let body: {
+      code?: string;
+      routes?: {
+        distance?: number;
+        duration?: number;
+        geometry?: { coordinates?: [number, number][] };
+      }[];
+    };
+    try {
+      const res = await this.fetchFn(url, { signal: AbortSignal.timeout(this.timeoutMs) });
+      if (!res.ok) throw new RouteUnavailableError(`OSRM respondeu HTTP ${res.status}`);
+      body = await res.json();
+    } catch (e) {
+      if (e instanceof RouteUnavailableError) throw e;
+      throw new RouteUnavailableError('Falha ao consultar o OSRM');
+    }
+    const r = body.routes?.[0];
+    if (body.code !== 'Ok' || r?.distance === undefined || r.duration === undefined)
+      throw new RouteUnavailableError(`OSRM sem rota (${body.code ?? 'resposta inválida'})`);
+    const result: RouteResult = {
+      distanceMeters: Math.ceil(r.distance),
+      durationSeconds: Math.ceil(r.duration),
+    };
+    // GeoJSON vem como [lng, lat].
+    if (opts?.withPath && r.geometry?.coordinates)
+      result.path = r.geometry.coordinates.map(([lng, lat]) => ({ lat, lng }));
+    return result;
+  }
+}
+
+/** ROUTE_PROVIDER=simulated (padrão) | osrm | mapbox. Simulado e OSRM público são recusados em produção. */
 export function createRouteProvider(config: ConfigService): RouteProvider {
   const mode = config.get<string>('ROUTE_PROVIDER') ?? 'simulated';
   if (mode === 'simulated') {
@@ -96,6 +141,13 @@ export function createRouteProvider(config: ConfigService): RouteProvider {
       throw new Error('ROUTE_PROVIDER=simulated não pode ser usado em produção');
     new Logger('Rotas').warn('Usando provedor de rotas SIMULADO (ROUTE_PROVIDER=simulated)');
     return new SimulatedRouteProvider();
+  }
+  if (mode === 'osrm') {
+    const url = config.get<string>('OSRM_URL') ?? 'https://router.project-osrm.org';
+    if (config.get('NODE_ENV') === 'production' && url.includes('router.project-osrm.org'))
+      throw new Error('O OSRM público não pode ser usado em produção (defina OSRM_URL próprio)');
+    new Logger('Rotas').warn(`Usando OSRM (${url}) para rotas`);
+    return new OsrmRouteProvider(url);
   }
   if (mode === 'mapbox') {
     const token = config.get<string>('MAPBOX_ACCESS_TOKEN');

@@ -72,6 +72,8 @@ export async function cancelDelivery(
     from: DeliveryStatus;
     reason: CancelReason;
     note?: string;
+    /** Motivo escolhido no menu do app; vai no evento para auditoria. */
+    category?: string;
     actorId?: string | null;
   },
 ): Promise<boolean> {
@@ -82,6 +84,7 @@ export async function cancelDelivery(
     data: { cancelReason: input.reason, cancelNote: input.note, cancelledAt: new Date() },
     actorId: input.actorId,
     reason: input.reason,
+    eventData: input.category ? { category: input.category } : undefined,
   });
   if (ok)
     await tx.deliveryOffer.updateMany({

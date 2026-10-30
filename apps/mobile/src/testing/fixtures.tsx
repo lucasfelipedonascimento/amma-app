@@ -114,6 +114,7 @@ export function driverValue(over: Partial<DriverValue> = {}): DriverValue {
     decline: fn(),
     advance: fn(),
     release: fn(),
+    cancelTrip: jest.fn(async () => true),
     prepareSignOut: fn(),
     ...over,
   };

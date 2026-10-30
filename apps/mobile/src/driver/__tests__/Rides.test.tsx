@@ -84,6 +84,7 @@ describe('corrida em andamento', () => {
   it('mostra o passageiro e fala em passageiro, não em coleta', async () => {
     await renderRide('ACEITO');
     expect(screen.getByText('Ir buscar o passageiro em')).toBeTruthy();
+    await fireEvent.press(screen.getByText('Detalhes'));
     expect(screen.getByTestId('passenger-line').props.children.join('')).toBe(
       'Passageiro: Ana · ★ 4,8 (7 avaliações)',
     );
@@ -94,6 +95,7 @@ describe('corrida em andamento', () => {
   it('o embarque exige o PIN: botão desligado até 4 dígitos, e só números', async () => {
     const advance = jest.fn(async () => undefined);
     await renderRide('A_CAMINHO_COLETA', { advance });
+    await fireEvent.press(screen.getByText('Detalhes'));
     expect(screen.getByText('PIN de embarque')).toBeTruthy();
     const input = screen.getByLabelText('PIN do passageiro');
     await fireEvent.changeText(input, '12a');
@@ -150,6 +152,7 @@ describe('corrida em andamento', () => {
         body: { deliveryId: 'd1', lat: -7.115, lng: -34.861 },
       }),
     );
+    await fireEvent.press(screen.getByText('Detalhes'));
     await fireEvent.press(screen.getByText('Denunciar'));
     await fireEvent.press(screen.getByText('Assédio'));
     await fireEvent.changeText(screen.getByLabelText('O que aconteceu?'), 'Passageiro me ofendeu.');

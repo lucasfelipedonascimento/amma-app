@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   MapboxRouteProvider,
+  OsrmRouteProvider,
   RouteUnavailableError,
   SimulatedRouteProvider,
 } from './route-provider';
@@ -86,5 +87,50 @@ describe('MapboxRouteProvider', () => {
       expect(err).toBeInstanceOf(RouteUnavailableError);
       expect((err as Error).message).not.toContain('segredo');
     }
+  });
+});
+
+describe('OsrmRouteProvider', () => {
+  const ok = (body: unknown, status = 200) =>
+    vi.fn(async () => new Response(JSON.stringify(body), { status }));
+
+  it('monta a URL com lng,lat, devolve o traçado pelas ruas e arredonda para cima', async () => {
+    const fetchFn = ok({
+      code: 'Ok',
+      routes: [
+        {
+          distance: 1500.2,
+          duration: 301.1,
+          geometry: {
+            coordinates: [
+              [-34.86, -7.115],
+              [-34.859, -7.11],
+              [-34.86, -7.105],
+            ],
+          },
+        },
+      ],
+    });
+    const r = await new OsrmRouteProvider('http://osrm.local/', fetchFn).route(A, B, {
+      withPath: true,
+    });
+    expect(r.distanceMeters).toBe(1501);
+    expect(r.durationSeconds).toBe(302);
+    expect(r.path).toHaveLength(3);
+    const url = String((fetchFn.mock.calls[0] as unknown[])[0]);
+    expect(url).toContain('http://osrm.local/route/v1/driving/-34.86,-7.115;-34.86,-7.105');
+    expect(url).toContain('geometries=geojson');
+  });
+
+  it('sem rota ou erro de rede: RouteUnavailableError', async () => {
+    await expect(
+      new OsrmRouteProvider('http://x', ok({ code: 'NoRoute', routes: [] })).route(A, B),
+    ).rejects.toBeInstanceOf(RouteUnavailableError);
+    await expect(
+      new OsrmRouteProvider(
+        'http://x',
+        vi.fn(async () => Promise.reject(new Error('rede'))),
+      ).route(A, B),
+    ).rejects.toBeInstanceOf(RouteUnavailableError);
   });
 });

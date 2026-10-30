@@ -20,6 +20,8 @@ import {
   type RatingDirection,
   type RideVehicleType,
   CANCEL_RULES,
+  CLIENT_CANCEL_KEYS,
+  DRIVER_CANCEL_KEYS,
   buildRideSettlement,
   calculateFare,
   calculateRideFees,
@@ -299,6 +301,14 @@ export class DeliveryService {
       (rule.actor === 'MOTORISTA' && d.workerId === user.id) ||
       (rule.actor === 'ADMIN' && user.roles.includes('ADMIN'));
     if (!authorized) throw new ForbiddenException('Você não pode cancelar por este motivo');
+    const allowed =
+      rule.actor === 'CLIENTE'
+        ? CLIENT_CANCEL_KEYS
+        : rule.actor === 'MOTORISTA'
+          ? DRIVER_CANCEL_KEYS
+          : [];
+    if (dto.category && !allowed.includes(dto.category))
+      throw new BadRequestException('Motivo inválido para quem está cancelando');
     if (rule.actor === 'ADMIN' && !dto.note?.trim())
       throw new BadRequestException('Cancelamento administrativo exige justificativa (note)');
     if (!canCancel(d.status, dto.reason, rule.actor))
@@ -316,6 +326,7 @@ export class DeliveryService {
         from: d.status,
         reason: dto.reason,
         note: dto.note?.trim(),
+        category: dto.category,
         actorId: user.id,
       }),
     );

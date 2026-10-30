@@ -31,7 +31,7 @@ describe('acesso por área', () => {
     ] as const)
       expect(canAccessSection(['SOCIO'], s)).toBe(false);
   });
-  it('admin vê tudo', () => expect(sectionsFor(['ADMIN'])).toHaveLength(10));
+  it('admin vê tudo', () => expect(sectionsFor(['ADMIN'])).toHaveLength(11));
   it('sem papel não vê nada', () => expect(sectionsFor([])).toEqual([]));
 });
 

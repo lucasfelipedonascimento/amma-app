@@ -19,6 +19,7 @@ export const PANEL_SECTIONS = [
   'usuarios',
   'auditoria',
   'orcamento',
+  'simulador',
 ] as const;
 export type PanelSection = (typeof PANEL_SECTIONS)[number];
 
@@ -34,6 +35,7 @@ export const SECTION_ACCESS: Record<PanelSection, readonly PanelRole[]> = {
   usuarios: ['ADMIN'],
   auditoria: ['ADMIN'],
   orcamento: ['ADMIN', 'SOCIO'],
+  simulador: ['ADMIN'],
 };
 
 export const SECTION_LABEL: Record<PanelSection, string> = {
@@ -47,6 +49,7 @@ export const SECTION_LABEL: Record<PanelSection, string> = {
   usuarios: 'Bloqueios e recursos',
   auditoria: 'Auditoria',
   orcamento: 'Orçamento aberto',
+  simulador: 'Simulador (teste)',
 };
 
 /** Papéis de painel de uma pessoa. Sócio = motorista com cotas; um admin que também é sócio tem os dois. */

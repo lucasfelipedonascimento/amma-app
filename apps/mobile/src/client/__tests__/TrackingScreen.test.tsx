@@ -1,4 +1,4 @@
-import { Alert, Share } from 'react-native';
+import { Share } from 'react-native';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { ApiError, api } from '../../api';
 import { TrackingScreen } from '../screens/TrackingScreen';
@@ -122,19 +122,24 @@ describe('Acompanhar entrega', () => {
   });
 
   it('cancelar pago avisa do estorno e mostra o dinheiro devolvido', async () => {
-    const alert = jest.spyOn(Alert, 'alert').mockImplementation((_t, _m, buttons) => {
-      void buttons?.find((b) => b.style === 'destructive')?.onPress?.();
-    });
     await setup(delivery);
     await screen.findByText('Buscando motorista');
     await fireEvent.press(screen.getByText('Cancelar pedido'));
-    expect(alert.mock.calls[0]![1]).toMatch(/estorno/);
+    expect(screen.getByText(/estorno/)).toBeTruthy();
+    expect(screen.getByLabelText('Mudei de ideia')).toBeTruthy();
+    // sem motivo escolhido, não confirma
+    expect(
+      screen.getByRole('button', { name: 'Confirmar cancelamento' }).props.accessibilityState,
+    ).toMatchObject({ disabled: true });
+    expect(screen.queryByLabelText('O motorista está demorando')).toBeNull(); // ainda sem motorista
+    await fireEvent.press(screen.getByLabelText('Mudei de ideia'));
+    await fireEvent.press(screen.getByRole('button', { name: 'Confirmar cancelamento' }));
     expect(await screen.findByText('Cancelado')).toBeTruthy();
     expect(screen.getByText('Você cancelou o pedido.')).toBeTruthy();
     expect(screen.getByTestId('payment-status').props.children).toBe('Estornado');
     expect(screen.getByText('Ver recibo')).toBeTruthy();
     const call = mockApi.mock.calls.find((c) => String(c[0]).endsWith('/cancel'))!;
-    expect(call[1].body).toEqual({ reason: 'CLIENTE_DESISTIU' });
+    expect(call[1].body).toEqual({ reason: 'CLIENTE_DESISTIU', category: 'MUDEI_DE_IDEIA' });
   });
 
   it('entregue: avalia (nota obrigatória) e vê a própria avaliação depois', async () => {

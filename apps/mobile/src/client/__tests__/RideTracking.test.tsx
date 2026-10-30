@@ -249,17 +249,13 @@ describe('Acompanhar corrida', () => {
   it('cancelar a corrida usa o motivo do cliente e o texto de corrida', async () => {
     await setup({ ...ride, status: 'OFERECIDO', driver: null, boardingPin: '4821' });
     await fireEvent.press(await screen.findByText('Cancelar corrida'));
-    expect((Alert.alert as jest.Mock).mock.calls[0][0]).toBe('Cancelar corrida?');
-    const buttons = (Alert.alert as jest.Mock).mock.calls[0][2] as {
-      text: string;
-      onPress?: () => void;
-    }[];
-    await act(async () => {
-      buttons.find((b) => b.text === 'Cancelar corrida')!.onPress!();
-    });
-    expect(mockApi).toHaveBeenCalledWith('/deliveries/d1/cancel', {
-      body: { reason: 'CLIENTE_DESISTIU' },
-    });
+    await fireEvent.press(screen.getByLabelText('Pedi por engano'));
+    await fireEvent.press(screen.getByRole('button', { name: 'Confirmar cancelamento' }));
+    await waitFor(() =>
+      expect(mockApi).toHaveBeenCalledWith('/deliveries/d1/cancel', {
+        body: { reason: 'CLIENTE_DESISTIU', category: 'PEDI_POR_ENGANO' },
+      }),
+    );
     expect(await screen.findByText('Você cancelou a corrida.')).toBeTruthy();
   });
 });

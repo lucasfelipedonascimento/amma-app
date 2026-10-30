@@ -74,6 +74,11 @@ export interface DriverValue {
   /** `pin` é o PIN de embarque (só corrida, ao confirmar o embarque). */
   advance: (pin?: string) => Promise<void>;
   release: () => Promise<void>;
+  /**
+   * Cancelar pelo menu de motivos. RELEASE devolve o pedido à fila; CANCEL cancela (coleta ou entrega impossível).
+   * Devolve true se deu certo (a tela fecha o menu).
+   */
+  cancelTrip: (category: string, effect: 'RELEASE' | 'CANCEL') => Promise<boolean>;
   prepareSignOut: () => Promise<void>;
 }
 
@@ -419,6 +424,35 @@ export function DriverProvider({ children }: { children: ReactNode }) {
     [active, run],
   );
 
+  const cancelTrip = useCallback(
+    async (category: string, effect: 'RELEASE' | 'CANCEL') => {
+      if (!active) return false;
+      let done = false;
+      await run(async () => {
+        if (effect === 'RELEASE')
+          await api(`/driver/deliveries/${active.id}/release`, {
+            method: 'POST',
+            body: { category },
+          });
+        else
+          await api(`/deliveries/${active.id}/cancel`, {
+            method: 'POST',
+            body: {
+              reason:
+                active.status === 'COLETADO' || active.status === 'A_CAMINHO_ENTREGA'
+                  ? 'ENTREGA_IMPOSSIVEL'
+                  : 'COLETA_IMPOSSIVEL',
+              category,
+            },
+          });
+        setActive(null);
+        done = true;
+      });
+      return done;
+    },
+    [active, run],
+  );
+
   const prepareSignOut = useCallback(async () => {
     if (onlineRef.current && !active)
       await api('/driver/presence/offline', { method: 'POST' }).catch(() => {});
@@ -459,6 +493,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       decline,
       advance,
       release,
+      cancelTrip,
       prepareSignOut,
     }),
     [
@@ -489,6 +524,7 @@ export function DriverProvider({ children }: { children: ReactNode }) {
       decline,
       advance,
       release,
+      cancelTrip,
       prepareSignOut,
     ],
   );

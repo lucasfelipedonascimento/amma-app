@@ -501,7 +501,7 @@ export class DispatchService {
   }
 
   /** Motorista aceitou mas não consegue seguir: o pedido volta à fila (antes de coletar). */
-  async release(driverId: string, deliveryId: string) {
+  async release(driverId: string, deliveryId: string, category?: string) {
     const ok = await this.prisma.$transaction(async (tx) => {
       const d = await tx.delivery.findUnique({ where: { id: deliveryId } });
       if (!d || d.workerId !== driverId) throw new NotFoundException('Pedido não encontrado');
@@ -522,6 +522,7 @@ export class DispatchService {
         type: 'DESISTENCIA',
         actorId: driverId,
         reason: 'DESISTIU' satisfies DispatchReason,
+        data: category ? { category } : undefined,
       });
       return d;
     });
