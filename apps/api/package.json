@@ -12,6 +12,7 @@
     "prisma:migrate": "dotenv -e ../../.env -- prisma migrate dev",
     "prisma:deploy": "dotenv -e ../../.env -- prisma migrate deploy",
     "db:seed": "dotenv -e ../../.env -- tsx prisma/seed.ts",
+    "db:approve": "dotenv -e ../../.env -- tsx prisma/approve-driver.ts",
     "postinstall": "prisma generate",
     "test:int": "vitest run --config vitest.int.config.mts"
   },
