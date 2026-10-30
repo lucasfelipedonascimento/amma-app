@@ -440,4 +440,9 @@ Admin do seed `+5583999990001`; sócio `+5583999990003` (o código aparece na te
 - Variável nova: `WS_REVALIDATE_MS`. O app do motorista já pedia o consentimento antes de ficar online, então nada muda no fluxo; um `403 LOCATION_CONSENT_REQUIRED` só aparece se o servidor não tiver o registro.
 - Checklist de lançamento: ✅ exportação dos dados, ✅ consentimento de localização no servidor.
 
-**Próxima parte:** 4 (infra: Docker/Redis/Postgres, mobile, painel, dependências e CI).
+**Parte 4 — Infra, mobile, painel, dependências e CI ✅ (2026-10-30)**
+
+- Corrigido: `multer` com DoS (D1) e demais avisos de dependências por `pnpm.overrides` (D2), vitest 4 (D3); Postgres/Redis do compose só em `127.0.0.1` (I1); a API recusa subir em produção com credencial padrão, sem Redis ou sem https público (I2); app mobile exige `https://` em produção e sem backup no Android (M1); CSP, Permissions-Policy e HSTS no painel (A1); `permissions: contents: read` nos workflows e `security.yml` com `pnpm audit` (C1).
+- `pnpm audit --prod`: 1 _low_ restante, sem correção publicada.
+- Testes novos: `prod-config.test.ts` (API), `api-url.test.ts` (mobile). Total: 400 de integração, suítes unitárias e de painel/mobile verdes; lint, typecheck e build do painel limpos.
+- **Auditoria concluída.** Pendências finais em `docs/SEGURANCA.md` (consolidado no fim).

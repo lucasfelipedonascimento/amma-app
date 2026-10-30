@@ -1,6 +1,8 @@
 name: Deploy mobile
 # Esqueleto: o destino do deploy ainda não foi decidido (ver docs/DECISOES.md).
 # Só dispara quando mudam pastas relevantes ao mobile.
+permissions:
+  contents: read
 on:
   push:
     branches: [main]

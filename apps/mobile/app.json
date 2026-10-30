@@ -14,7 +14,8 @@
       }
     },
     "android": {
-      "package": "br.org.amma.app"
+      "package": "br.org.amma.app",
+      "allowBackup": false
     },
     "plugins": [
       "expo-status-bar",

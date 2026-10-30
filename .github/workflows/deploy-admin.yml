@@ -1,6 +1,8 @@
 name: Deploy admin
 # Esqueleto: o destino do deploy ainda não foi decidido (ver docs/DECISOES.md).
 # Só dispara quando mudam pastas relevantes ao admin.
+permissions:
+  contents: read
 on:
   push:
     branches: [main]

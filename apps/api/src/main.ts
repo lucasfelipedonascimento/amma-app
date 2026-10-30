@@ -4,11 +4,13 @@ import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { WsAdapter } from '@nestjs/platform-ws';
 import { AppModule } from './app.module';
+import { assertProductionConfig } from './common/prod-config';
 import { corsOptions, parseCorsOrigins } from './common/cors';
 import { securityHeaders } from './common/security-headers';
 import { setupSwagger } from './common/swagger';
 
 async function bootstrap() {
+  assertProductionConfig(process.env);
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   // Atrás de proxy/balanceador, TRUST_PROXY (nº de proxies, ex.: 1) faz o limite de taxa usar o IP real.
   if (process.env.TRUST_PROXY) app.set('trust proxy', Number(process.env.TRUST_PROXY));

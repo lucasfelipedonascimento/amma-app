@@ -1,15 +1,15 @@
 # Segurança — auditoria e hardening
 
-> **Estado: em andamento, por partes.** Este documento cresce a cada parte e será fechado ao final. Metodologia: Fase 1 (reconhecimento), 2 (análise estática), 3 (testes que reproduzem a falha), 4 (relatório), 5 (correção), 6 (validação). Referências: OWASP Top 10, API Security Top 10, ASVS, MASVS, LGPD.
+> **Estado: as 4 partes estão concluídas (2026-10-30).** O documento cresceu a cada parte; as pendências finais estão em "Pendências para o lançamento" no fim. Metodologia: Fase 1 (reconhecimento), 2 (análise estática), 3 (testes que reproduzem a falha), 4 (relatório), 5 (correção), 6 (validação). Referências: OWASP Top 10, API Security Top 10, ASVS, MASVS, LGPD.
 
 ## Partes
 
 | Parte | Escopo                                                                                                                                             | Estado                              |
 | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
 | 1     | Autenticação e sessões: OTP, JWT, refresh, MFA do admin, limite de taxa, cabeçalhos, guard global                                                  | ✅ corrigida e testada (2026-10-30) |
-| 2     | Autorização (matriz endpoint × papel × dono, IDOR/BOLA) e fraude de corrida/financeiro (inclui bloqueio do `ENTREGUE` a mais de ~300 m do destino) | ⏳ próxima                          |
-| 3     | WebSocket, localização e privacidade, uploads/documentos, LGPD (consentimento no servidor, exportação)                                             | ⏳                                  |
-| 4     | Infra (Docker/Redis/Postgres), mobile, painel, dependências, CI                                                                                    | ⏳                                  |
+| 2     | Autorização (matriz endpoint × papel × dono, IDOR/BOLA) e fraude de corrida/financeiro (inclui bloqueio do `ENTREGUE` a mais de ~300 m do destino) | ✅ corrigida e testada (2026-10-30) |
+| 3     | WebSocket, localização e privacidade, uploads/documentos, LGPD (consentimento no servidor, exportação)                                             | ✅ corrigida e testada (2026-10-30) |
+| 4     | Infra (Docker/Redis/Postgres), mobile, painel, dependências, CI                                                                                    | ✅ corrigida e testada (2026-10-30) |
 
 ## Resumo da Parte 1
 
@@ -122,3 +122,45 @@ Cada achado abaixo foi **reproduzido com teste que falhava** antes da correção
 - **Política de privacidade:** não reexige aceite quando a versão muda; faltam termos de uso.
 - **Exportação:** não inclui arquivos dos documentos nem o que outras pessoas escreveram sobre o titular (por desenho); o prazo de resposta ao titular é processo, não código.
 - A localização em tempo real do app e do servidor depende do GPS do aparelho (ver limitação da Parte 2).
+
+---
+
+# Parte 4 — Infra, mobile, painel, dependências e CI
+
+## Achados da Parte 4
+
+| ID  | Sev.  | Situação       | Componente                                  | Descrição / evidência                                                                                                                                          | Correção                                                                                                                                |
+| --- | ----- | -------------- | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| D1  | Alta  | **Confirmada** | `multer` 2.4.0 (API)                        | `pnpm audit`: DoS por requisição de upload pendente (GHSA do multer), em dependência de **produção** que atende as rotas de upload.                            | Override para `multer ^2.5.0`.                                                                                                          |
+| D2  | Média | Confirmada     | `postcss`, `zod`, `js-yaml`, `deepmerge-ts` | Avisos high/moderate em transitivos (Next/Swagger/Prisma). Pouco alcançáveis (CSS só em build; entrada de zod não vem de usuário), mas sem motivo para manter. | Overrides; `pnpm audit --prod`: sobra 1 _low_ (`deepmerge` 4.x, sem versão corrigida publicada).                                        |
+| D3  | Baixa | Confirmada     | `vitest`, `tinypool`                        | Avisos críticos/moderados só de **desenvolvimento** (runner de testes, não vai para produção).                                                                 | Vitest 4.1.12 (catálogo). 400 testes de integração e demais suítes seguem verdes.                                                       |
+| I1  | Alta  | **Confirmada** | `docker-compose.yml`                        | Postgres (senha padrão) e Redis (sem senha) publicados em `0.0.0.0`: quem estivesse na mesma rede alcançava os dois.                                           | Portas só em `127.0.0.1`; arquivo marcado como só para desenvolvimento.                                                                 |
+| I2  | Média | Confirmada     | `main.ts`                                   | Em produção nada impedia subir com a senha padrão do banco, sem Redis ou com `PUBLIC_BASE_URL` em http (links de viagem em texto puro).                        | `assertProductionConfig` recusa a partida (`common/prod-config.ts`, testado).                                                           |
+| M1  | Média | Confirmada     | `apps/mobile/src/api.ts`                    | `API_URL` caia em `http://localhost:3000`; um build de produção sem a variável (ou com http) trafegaria token e dados sem TLS.                                 | `resolveApiUrl`: em produção exige `https://` e o app não abre sem isso (testado). `allowBackup: false` no Android.                     |
+| A1  | Média | Confirmada     | `apps/admin/next.config`                    | Painel sem CSP e sem HSTS: um XSS teria alcance total e o navegador aceitaria http na primeira visita.                                                         | CSP (`default-src 'self'`, `frame-ancestors 'none'`, `object-src 'none'`, `form-action 'self'`), Permissions-Policy e HSTS em produção. |
+| C1  | Média | Confirmada     | `.github/workflows`                         | Workflows sem `permissions`: o `GITHUB_TOKEN` herdava escrita no repositório. Nenhuma checagem de dependências no CI.                                          | `permissions: contents: read` em todos; novo `security.yml` (`pnpm audit --prod --audit-level=high` em PR, em `main` e toda segunda).   |
+
+## Verificado e sem falha (Parte 4)
+
+- `.env` e `uploads/` estão no `.gitignore`, nunca foram commitados (histórico conferido) e o `.env.example` só tem valores de desenvolvimento e campos vazios para segredos.
+- Mobile: tokens só no `expo-secure-store` (Keychain/Keystore); nenhum `console.*` nem `AsyncStorage` no código; nenhum esquema de deep link registrado (não há link que abra o app), `Linking` só abre `tel:` e o mapa; permissões de localização com texto de uso.
+- Painel: cookies `httpOnly`, `SameSite=Strict`, `Secure` em produção; proxy só para `/admin` e `/panel`, com bloqueio de `..`, barras e `%`, e checagem de `Origin` em métodos que mudam dados; `Cache-Control: private, no-store`.
+- API: `ValidationPipe` com `whitelist` + `forbidNonWhitelisted`; log de acesso sem corpo nem cabeçalhos; logs de erro sem token (o telefone do OTP simulado já foi mascarado na Parte 3).
+- Workflows (7 arquivos): sem segredo no código; os deploys são esqueleto (`echo TODO`) e não têm credencial.
+
+## Pendências e limitações (Parte 4)
+
+- **Redis e Postgres de produção** (senha forte, TLS, rede privada, backups cifrados) são infraestrutura ainda não provisionada: não há Dockerfile nem IaC no repositório e nada foi inventado aqui. Ver checklist de lançamento.
+- As _actions_ do CI usam tag (`@v4`), não SHA. Fixar por SHA é o mais seguro, mas exige manutenção; avaliar junto com Dependabot/Renovate.
+- Não há varredura de segredos no CI (gitleaks) nem SAST; avaliar quando o repositório for para a organização.
+- Sem _certificate pinning_ no app e sem detecção de root/jailbreak (MASVS-RESILIENCE): por ora risco aceito, dado que o servidor não confia no aparelho.
+- `deepmerge` 4.x (_low_) sem correção publicada; revisar no próximo `pnpm audit`.
+- O CSP do painel mantém `'unsafe-inline'` em scripts (o Next injeta scripts inline); trocar por _nonce_ exige renderização dinâmica em todas as páginas.
+
+# Pendências para o lançamento (consolidado)
+
+1. 👤 **Jurídico/LGPD:** rotina de expurgo, ROPA, encarregado (DPO), RIPD, reaceite da política, termos de uso.
+2. 👤 **Infra:** Postgres/Redis gerenciados e privados com TLS, bucket privado cifrado para arquivos, TLS na borda com `TRUST_PROXY`, backups, rotação de `JWT_SECRET`.
+3. **Provedor real de SMS** (hoje só simulado): usar canal diferente do OTP para reautenticação do admin quando possível (risco de troca de chip).
+4. **Antivírus/reencode** nos uploads ao migrar para bucket.
+5. **Monitoramento:** alerta para `ESTORNO MANUAL NECESSÁRIO`, picos de 429 e de `TOO_FAR_FROM_DROPOFF`.

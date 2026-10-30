@@ -2,7 +2,14 @@ import { File, UploadType } from 'expo-file-system';
 import * as SecureStore from 'expo-secure-store';
 
 // Emulador Android: http://10.0.2.2:3000. Celular físico: IP do computador na rede (ex.: http://192.168.0.10:3000).
-export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
+/** Em build de produção a API só vale com https (token e dados nunca trafegam em texto puro). */
+export function resolveApiUrl(raw: string | undefined, dev: boolean): string {
+  if (dev) return raw ?? 'http://localhost:3000';
+  if (!raw || !/^https:\/\//i.test(raw))
+    throw new Error('EXPO_PUBLIC_API_URL deve ser um endereço https:// em build de produção');
+  return raw;
+}
+export const API_URL = resolveApiUrl(process.env.EXPO_PUBLIC_API_URL, __DEV__);
 
 /** Endereço do WebSocket de tempo real (mesmo servidor da API). */
 export const WS_URL = `${API_URL.replace(/^http/, 'ws')}/ws`;
