@@ -84,3 +84,41 @@ Cada item abaixo tem teste na matriz:
 - **Idempotência do pedido:** repetir a chave com corpo diferente devolve o pedido anterior em vez de erro. Sem impacto financeiro (nada é cobrado de novo).
 - **Estimativa de corrida** (`availability`) ainda conta o próprio usuário como motorista próximo (informativo; não gera oferta).
 - Saída para quem não consegue chegar a 300 m (portaria longe, GPS ruim): cancelar por `ENTREGA_IMPOSSIVEL` (sem conclusão manual pelo admin; avaliar se é necessária).
+
+---
+
+# Parte 3 — WebSocket, localização, arquivos e LGPD
+
+## Resumo
+
+Cada achado abaixo foi **reproduzido com teste que falhava** antes da correção (`test/privacy.int.test.ts`, 11 testes). Na análise estática, o WebSocket já isolava eventos por `userId` (não há salas por ID de corrida, então "entrar na sala de outra corrida" não existe) e o armazenamento de arquivos já usava nomes gerados.
+
+## Achados da Parte 3
+
+| ID  | Sev.  | Situação                  | Componente                                 | Descrição / evidência                                                                                                                                                                                                         | Correção                                                                                                                                                                                                                                                    |
+| --- | ----- | ------------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| W1  | Média | **Confirmada**            | `realtime.gateway.ts`                      | O token só era conferido no `auth`: a conexão sobrevivia a bloqueio, exclusão da conta e "sair de todos os aparelhos" (recebendo eventos e aceitando posição). Sem limite de conexões por usuário e sem checagem de `Origin`. | Revalidação periódica (`WS_REVALIDATE_MS`, 60 s): sem sessão válida ou conta bloqueada/excluída → 4401. Máx. 3 conexões por usuário (4429). `Origin` de navegador fora de `CORS_ORIGINS` → 4403 (app nativo não envia). 120 conexões/min por IP.            |
+| P1  | Média | **Confirmada**            | `driver-ops.controller.ts`                 | `POST /driver/presence/online` não exigia o consentimento de localização (só o app pedia): sem prova no servidor. Revogar também não tirava o motorista do ar.                                                                | `403 LOCATION_CONSENT_REQUIRED` sem consentimento vigente; revogar encerra a presença e apaga a posição (Redis e PostGIS).                                                                                                                                  |
+| L1  | Média | **Confirmada** (ausência) | `/me`                                      | Não havia exportação dos dados do titular (LGPD art. 18).                                                                                                                                                                     | `GET /me/export`: JSON só com dados do titular; sem terceiros (motorista não recebe endereço do cliente), sem notas/comentários recebidos, sem chaves de arquivo, tokens de push, hashes nem referências do provedor; 3/dia; funciona para conta bloqueada. |
+| U1  | Média | **Confirmada**            | `common/file-type.ts` e serviços de upload | PDF com `/JavaScript`, `/OpenAction`, `/Launch`, `/EmbeddedFile` etc. era aceito (só os bytes iniciais eram conferidos).                                                                                                      | Recusa PDF com conteúdo ativo (documentos, anexos de seguro e fotos de ponto).                                                                                                                                                                              |
+| U2  | Baixa | **Confirmada**            | `driver.service.ts`                        | Sem teto de documentos por conta (só 20 envios/h): enchimento de disco.                                                                                                                                                       | Máx. 50 por conta (409).                                                                                                                                                                                                                                    |
+| U3  | Baixa | **Confirmada**            | `admin.controller.ts`                      | O download do documento pelo admin não impedia abrir o arquivo na página.                                                                                                                                                     | `Content-Disposition: attachment` + `CSP: sandbox`, sem cache. A abertura já ia para a trilha (testado).                                                                                                                                                    |
+| L2  | Baixa | Confirmada                | `otp-sender.ts`                            | O OTP simulado (só dev) registrava o telefone completo no log.                                                                                                                                                                | Telefone mascarado (`***1234`).                                                                                                                                                                                                                             |
+
+## Verificado e sem falha (Parte 3)
+
+- Eventos em tempo real vão só ao `userId` dono; cliente só recebe a posição do motorista enquanto o pedido está em andamento; o motorista só envia a própria posição e só online (testes existentes).
+- Posição: só a **última** fica guardada (Redis expira em 120 s; apagada ao ficar offline). Trajeto só de corrida, 90 dias, com auditoria de acesso do admin.
+- Pontos de acolhida: casa parceira só com bairro e posição arredondada (~110 m); a posição do check-in não é guardada, só a distância.
+- Upload: nome do cliente nunca vira caminho (teste com `../../../etc/passwd`); chave é UUID + extensão do tipo **detectado**; arquivo `0600`; documentos pessoais só para admin (auditado) e dono do link da foto durante a corrida.
+- Compartilhamento de viagem: token de 192 bits, só o hash no banco, lista fechada de campos.
+
+## Pendências e limitações (Parte 3)
+
+- **Sem antivírus** e sem reencodar imagens (polyglot JPEG/HTML é neutralizado por `nosniff` + tipo servido, mas o arquivo é guardado como veio). Recomendado: varredura (ClamAV) ou reencode ao migrar para bucket.
+- **Armazenamento em disco local**; sem URL temporária assinada. Trocar por bucket privado cifrado (já isolado em `StorageService`).
+- **WebSocket:** a expiração do _token_ (15 min) não derruba a conexão; ela cai pela revalidação de sessão (refresh). Reconexão exige token novo. Registro de conexões continua em memória (1 instância).
+- **Retenção:** logs, `DeliveryEvent`, trilha de auditoria, endereços de pedidos antigos e denúncias não têm rotina de expurgo (decisão do jurídico). ROPA, encarregado e RIPD seguem pendentes (👤).
+- **Política de privacidade:** não reexige aceite quando a versão muda; faltam termos de uso.
+- **Exportação:** não inclui arquivos dos documentos nem o que outras pessoas escreveram sobre o titular (por desenho); o prazo de resposta ao titular é processo, não código.
+- A localização em tempo real do app e do servidor depende do GPS do aparelho (ver limitação da Parte 2).

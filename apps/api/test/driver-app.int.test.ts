@@ -108,6 +108,8 @@ describe('app do motorista: ganhos, rota, consentimento, push e posição', () =
 
   describe('consentimento de localização', () => {
     it('começa sem consentimento, registra com a versão certa e pode ser revogado', async () => {
+      // O helper `online` do beforeEach já consentiu; aqui o teste parte do zero.
+      await t.prisma.consent.deleteMany({ where: { userId: driver.id } });
       expect((await t.get('/driver/location-consent', driver.token)).body).toMatchObject({
         granted: false,
         version: LOCATION_CONSENT_VERSION,

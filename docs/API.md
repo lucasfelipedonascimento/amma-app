@@ -773,3 +773,10 @@ O navegador só fala com o painel: `POST /api/auth/request` e `/api/auth/verify`
 - `{ code: "POSITION_UNKNOWN" }`: não há posição, ou ela tem mais de 120 s (GPS desligado, app fechado).
 
 O app deve manter o envio de posição (`POST /driver/position` ou WebSocket). Quem não consegue chegar usa `POST /deliveries/:id/cancel` com `ENTREGA_IMPOSSIVEL`. O despacho e o aceite nunca atribuem o pedido ao próprio cliente.
+
+## WebSocket, localização, arquivos e exportação (auditoria de segurança, Parte 3)
+
+- **WebSocket `/ws`:** fecha com `4401` (sem sessão válida, bloqueio, exclusão, logout), `4403` (`Origin` de navegador não autorizado) ou `4429` (mais de 3 conexões do usuário ou excesso de conexões por IP). O app deve reconectar com token novo. Variável: `WS_REVALIDATE_MS` (padrão 60000; 0 desliga).
+- `POST /driver/presence/online` → `403 { code: "LOCATION_CONSENT_REQUIRED" }` sem consentimento vigente (`POST /driver/location-consent`). `DELETE /driver/location-consent` também tira o motorista do ar e apaga a posição.
+- `GET /me/export` (logado, inclusive bloqueado; 3/dia): JSON com os dados do titular (`Content-Disposition: attachment`).
+- Uploads recusam PDF com conteúdo ativo (`400`); documentos por conta: máx. 50 (`409`). `GET /admin/documents/:id/file` devolve sempre como anexo.

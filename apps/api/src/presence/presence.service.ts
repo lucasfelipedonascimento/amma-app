@@ -68,6 +68,15 @@ export class PresenceService {
     await this.store.remove(userId);
   }
 
+  /** Offline sem as travas de `goOffline` (revogação de consentimento: não depende de entrega em andamento). */
+  async forceOffline(userId: string) {
+    await this.prisma.$executeRaw`
+      UPDATE "DriverPresence"
+      SET online = false, "onlineSince" = NULL, location = NULL, "locationAt" = NULL, "updatedAt" = now()
+      WHERE "userId" = ${userId}`;
+    await this.store.remove(userId);
+  }
+
   /**
    * Posição recebida pelo WebSocket. Sempre vai para o Redis; o PostGIS recebe no máximo
    * uma gravação a cada PERSIST_EVERY_SECONDS. Retorna false se o motorista não está online.

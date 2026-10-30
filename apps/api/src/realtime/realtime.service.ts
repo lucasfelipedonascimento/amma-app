@@ -31,6 +31,21 @@ export class RealtimeService {
     }
   }
 
+  /** Quantas conexões abertas o usuário tem. */
+  connectionCount(userId: string): number {
+    return this.sockets.get(userId)?.size ?? 0;
+  }
+
+  connectedUserIds(): string[] {
+    return [...this.sockets.keys()];
+  }
+
+  /** Fecha todas as conexões do usuário (conta bloqueada, excluída ou que saiu). */
+  disconnectUser(userId: string, code = 4401, reason = 'unauthorized') {
+    for (const socket of [...(this.sockets.get(userId) ?? [])]) socket.close(code, reason);
+    this.sockets.delete(userId);
+  }
+
   isConnected(userId: string): boolean {
     return (this.sockets.get(userId)?.size ?? 0) > 0;
   }

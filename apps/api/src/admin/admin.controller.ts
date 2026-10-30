@@ -54,8 +54,11 @@ export class AdminController {
     });
   }
 
+  // Documento pessoal: sempre baixado (nunca aberto na página), isolado e sem cache.
   @Get('documents/:id/file')
   @Header('Cache-Control', 'private, no-store')
+  @Header('Content-Disposition', 'attachment; filename="documento"')
+  @Header('Content-Security-Policy', "default-src 'none'; sandbox")
   async file(@Param('id', ParseUUIDPipe) id: string) {
     const doc = await this.prisma.document.findUnique({ where: { id } });
     if (!doc) throw new NotFoundException();

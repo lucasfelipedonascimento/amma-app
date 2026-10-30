@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AccountController } from './account/account.controller';
 import { AccountService } from './account/account.service';
+import { ExportService } from './account/export.service';
 import { AdminController } from './admin/admin.controller';
 import { AppController } from './app.controller';
 import { AssociationModule } from './association/association.module';
@@ -32,6 +33,6 @@ import { WelcomeModule } from './welcome/welcome.module';
     LegalController,
     MerchantController,
   ],
-  providers: [AccountService, DriverService, MerchantService],
+  providers: [AccountService, ExportService, DriverService, MerchantService],
 })
 export class AppModule {}

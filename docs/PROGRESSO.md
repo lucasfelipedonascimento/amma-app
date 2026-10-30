@@ -433,4 +433,11 @@ Admin do seed `+5583999990001`; sócio `+5583999990003` (o código aparece na te
 - Testes antigos que concluíam sem posição foram ajustados (helper `t.atDropoff`). Total: 389 de integração, 77 unitários na API, 286 no shared; lint e typecheck limpos.
 - **Para o app do motorista:** `delivered` pode responder `409` com `TOO_FAR_FROM_DROPOFF`/`POSITION_UNKNOWN` (a mensagem em português já vem pronta e o app a exibe). Falta um tratamento dedicado na tela (ex.: botão "Estou aqui" desabilitado longe do destino).
 
-**Próximas partes:** 3 (WebSocket, localização, uploads, LGPD), 4 (infra, mobile, painel, dependências).
+**Parte 3 — WebSocket, localização, arquivos e LGPD ✅ (2026-10-30)**
+
+- Corrigido (cada item reproduzido por teste antes): conexão WebSocket sobrevivia a bloqueio/exclusão/logout, sem limite nem checagem de origem (W1); consentimento de localização não exigido no servidor e revogação sem efeito imediato (P1); `GET /me/export` inexistente (L1); PDF com conteúdo ativo aceito (U1); sem teto de documentos (U2); download do admin sem isolamento (U3); telefone no log do OTP simulado (L2).
+- Testes: `test/privacy.int.test.ts` (11). Total: 400 de integração, 77 unitários na API; lint e typecheck limpos.
+- Variável nova: `WS_REVALIDATE_MS`. O app do motorista já pedia o consentimento antes de ficar online, então nada muda no fluxo; um `403 LOCATION_CONSENT_REQUIRED` só aparece se o servidor não tiver o registro.
+- Checklist de lançamento: ✅ exportação dos dados, ✅ consentimento de localização no servidor.
+
+**Próxima parte:** 4 (infra: Docker/Redis/Postgres, mobile, painel, dependências e CI).

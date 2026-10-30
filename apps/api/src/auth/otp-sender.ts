@@ -24,7 +24,7 @@ export class OtpSender {
 
   async send(phone: string, code: string): Promise<SendResult> {
     if (this.mode === 'simulated') {
-      this.logger.log(`[SIMULADO] código para ${phone}: ${code}`);
+      this.logger.log(`[SIMULADO] código para ***${phone.slice(-4)}: ${code}`);
       return { devCode: code };
     }
     throw new Error('Provedor de SMS ainda não configurado (OTP_MODE=sms)');

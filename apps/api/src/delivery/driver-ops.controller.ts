@@ -2,6 +2,7 @@ import {
   Body,
   BadRequestException,
   Controller,
+  ForbiddenException,
   Delete,
   Get,
   HttpCode,
@@ -58,7 +59,14 @@ export class DriverOpsController {
 
   @Post('presence/online')
   @HttpCode(200)
-  online(@Req() req: Req_, @Body() dto: LatLngDto) {
+  async online(@Req() req: Req_, @Body() dto: LatLngDto) {
+    // Prova do consentimento no servidor: o app já pede, mas não é ele que decide.
+    if (!(await this.app.locationConsent(req.user.id)).granted)
+      throw new ForbiddenException({
+        statusCode: 403,
+        code: 'LOCATION_CONSENT_REQUIRED',
+        message: 'Aceite o uso da localização para ficar online.',
+      });
     return this.presence.goOnline(req.user.id, dto);
   }
 
@@ -181,8 +189,11 @@ export class DriverOpsController {
 
   @Delete('location-consent')
   @HttpCode(204)
-  revokeLocationConsent(@Req() req: Req_) {
-    return this.app.revokeLocationConsent(req.user.id);
+  async revokeLocationConsent(@Req() req: Req_) {
+    await this.app.revokeLocationConsent(req.user.id);
+    // Sem consentimento não há coleta: sai do ar e a posição é apagada (mesmo com entrega em andamento).
+    await this.presence.forceOffline(req.user.id);
+    await this.dispatch.dropPendingOffers(req.user.id);
   }
 
   @Put('push-token')

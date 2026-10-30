@@ -73,6 +73,7 @@ describe('despacho', () => {
         .$executeRaw`UPDATE "DriverPresence" SET "locationAt" = now() - interval '5 minutes' WHERE "userId" = ${stale.id}`;
       await t.online(ok, near(2500));
       // Motorista não aprovado nem consegue ficar online...
+      await t.consentLocation(pending.id);
       const r = await t.post('/driver/presence/online', pending.token, near(50));
       expect(r.status).toBe(403);
       expect(r.body.approval.status).toBe('PENDENTE');

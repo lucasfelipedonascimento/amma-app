@@ -11,13 +11,15 @@ import {
   normalizePlate,
   type Gender,
 } from '@amma/shared';
-import { EXTENSION, sniffMime } from '../common/file-type';
+import { EXTENSION, hasActivePdfContent, sniffMime } from '../common/file-type';
 import { StorageService } from '../common/storage.service';
 import { PrismaService } from '../prisma.service';
 import { DriverProfileDto, UploadDocumentDto, VehicleDto } from './dto';
 
 export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
 const MIN_AGE_YEARS = 18;
+/** Teto de envios por conta (cada tipo pode ser reenviado, mas não sem fim: disco e abuso). */
+export const MAX_DOCUMENTS_PER_USER = 50;
 
 @Injectable()
 export class DriverService {
@@ -109,6 +111,10 @@ export class DriverService {
     if (!file) throw new BadRequestException('Arquivo não enviado');
     if (file.size > MAX_UPLOAD_BYTES) throw new BadRequestException('Arquivo maior que 5 MB');
     const mime = sniffMime(file.buffer);
+    if (mime === 'application/pdf' && hasActivePdfContent(file.buffer))
+      throw new BadRequestException(
+        'O PDF tem conteúdo ativo (scripts ou arquivos embutidos) e não é aceito.',
+      );
     if (!mime) throw new BadRequestException('Formato não suportado. Envie JPG, PNG ou PDF.');
     if (dto.type === 'FOTO' && mime === 'application/pdf')
       throw new BadRequestException('A foto deve ser JPG ou PNG');
@@ -117,6 +123,8 @@ export class DriverService {
       const owns = await this.prisma.vehicle.findFirst({ where: { id: dto.vehicleId, userId } });
       if (!owns) throw new NotFoundException('Veículo não encontrado');
     }
+    if ((await this.prisma.document.count({ where: { userId } })) >= MAX_DOCUMENTS_PER_USER)
+      throw new ConflictException('Limite de documentos enviados atingido. Fale com a associação.');
     const storageKey = await this.storage.save(file.buffer, EXTENSION[mime]);
     return this.prisma.document.create({
       data: {

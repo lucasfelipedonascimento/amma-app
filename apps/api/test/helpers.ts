@@ -1,7 +1,11 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { WsAdapter } from '@nestjs/platform-ws';
 import { Test } from '@nestjs/testing';
-import { DEFAULT_MUNICIPAL_RULES, type MunicipalRules } from '@amma/shared';
+import {
+  DEFAULT_MUNICIPAL_RULES,
+  LOCATION_CONSENT_VERSION,
+  type MunicipalRules,
+} from '@amma/shared';
 import { PrismaClient } from '@prisma/client';
 import WebSocket from 'ws';
 import { AppModule } from '../src/app.module';
@@ -264,7 +268,23 @@ export class TestApp {
     return this.driver(name, { ...opts, vehicleType: 'CARRO' });
   }
 
+  /** Consentimento de localização em segundo plano (o servidor exige para ficar online). */
+  async consentLocation(userId: string) {
+    const exists = await this.prisma.consent.count({
+      where: { userId, type: 'LOCALIZACAO_SEGUNDO_PLANO' },
+    });
+    if (!exists)
+      await this.prisma.consent.create({
+        data: {
+          userId,
+          type: 'LOCALIZACAO_SEGUNDO_PLANO',
+          version: LOCATION_CONSENT_VERSION,
+        },
+      });
+  }
+
   async online(driver: TestUser, at: { lat: number; lng: number }) {
+    await this.consentLocation(driver.id);
     const r = await this.post('/driver/presence/online', driver.token, at);
     if (r.status !== 200) throw new Error(`online falhou: ${r.status} ${JSON.stringify(r.body)}`);
   }

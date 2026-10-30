@@ -13,6 +13,15 @@ export function sniffMime(buf: Buffer): AllowedMime | null {
   return null;
 }
 
+/**
+ * PDF com conteúdo ativo (JavaScript, ações automáticas, programas ou arquivos embutidos). Documento de
+ * identificação não precisa disso, e é o vetor comum de PDF malicioso. Busca simples nos bytes: pode
+ * recusar um PDF legítimo raro (o motorista envia foto), mas nunca deixa passar o óbvio.
+ */
+const ACTIVE_PDF = /\/(JavaScript|JS|Launch|OpenAction|AA|EmbeddedFile|RichMedia|SubmitForm)\b/;
+export const hasActivePdfContent = (buf: Buffer): boolean =>
+  ACTIVE_PDF.test(buf.toString('latin1'));
+
 export const EXTENSION: Record<AllowedMime, string> = {
   'image/jpeg': 'jpg',
   'image/png': 'png',

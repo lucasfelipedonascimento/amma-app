@@ -22,7 +22,7 @@ import {
   type PointType,
 } from '@amma/shared';
 import { Prisma, type WelcomePoint } from '@prisma/client';
-import { EXTENSION, sniffMime } from '../common/file-type';
+import { EXTENSION, hasActivePdfContent, sniffMime } from '../common/file-type';
 import { StorageService } from '../common/storage.service';
 import { MAX_UPLOAD_BYTES } from '../driver/driver.service';
 import { PrismaService } from '../prisma.service';
@@ -199,6 +199,10 @@ export class PointsService {
     if (!file) throw new BadRequestException('Arquivo não enviado');
     if (file.size > MAX_UPLOAD_BYTES) throw new BadRequestException('Foto maior que 5 MB');
     const mime = sniffMime(file.buffer);
+    if (mime === 'application/pdf' && hasActivePdfContent(file.buffer))
+      throw new BadRequestException(
+        'O PDF tem conteúdo ativo (scripts ou arquivos embutidos) e não é aceito.',
+      );
     if (mime !== 'image/jpeg' && mime !== 'image/png')
       throw new BadRequestException('Formato não suportado. Envie JPG ou PNG.');
     const count = await this.prisma.welcomePointPhoto.count({ where: { pointId: point.id } });

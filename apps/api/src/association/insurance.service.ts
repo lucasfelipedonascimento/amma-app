@@ -13,7 +13,7 @@ import {
   type ClaimStatus,
 } from '@amma/shared';
 import { type InsuranceAttachment, type InsuranceClaim, type InsuranceEvent } from '@prisma/client';
-import { EXTENSION, sniffMime } from '../common/file-type';
+import { EXTENSION, hasActivePdfContent, sniffMime } from '../common/file-type';
 import { StorageService } from '../common/storage.service';
 import { MAX_UPLOAD_BYTES } from '../driver/driver.service';
 import { PrismaService } from '../prisma.service';
@@ -83,6 +83,10 @@ export class InsuranceService {
     if (!file) throw new BadRequestException('Arquivo não enviado');
     if (file.size > MAX_UPLOAD_BYTES) throw new BadRequestException('Arquivo maior que 5 MB');
     const mime = sniffMime(file.buffer);
+    if (mime === 'application/pdf' && hasActivePdfContent(file.buffer))
+      throw new BadRequestException(
+        'O PDF tem conteúdo ativo (scripts ou arquivos embutidos) e não é aceito.',
+      );
     if (!mime) throw new BadRequestException('Formato não suportado. Envie JPG, PNG ou PDF.');
     if (claim.attachments.length >= MAX_CLAIM_ATTACHMENTS)
       throw new ConflictException(`Máximo de ${MAX_CLAIM_ATTACHMENTS} anexos por pedido`);
