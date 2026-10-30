@@ -1,0 +1,15 @@
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { testDatabaseUrl, testRedisUrl } from './env';
+
+// Antes de qualquer import da aplicação (o ConfigModule não sobrescreve variáveis já definidas).
+process.env.DATABASE_URL = testDatabaseUrl();
+process.env.REDIS_URL = testRedisUrl();
+process.env.JWT_SECRET = 'segredo-de-teste-nao-usar-em-producao';
+process.env.OTP_MODE = 'simulated';
+process.env.ROUTE_PROVIDER = 'simulated';
+process.env.NODE_ENV = 'test';
+// Sem rotina automática: os testes chamam DispatchService.tick() quando querem.
+process.env.DISPATCH_TICK_MS = '0';
+process.env.UPLOAD_DIR = mkdtempSync(join(tmpdir(), 'amma-test-'));

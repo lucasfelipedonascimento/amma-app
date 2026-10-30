@@ -63,7 +63,25 @@ async function driver(
   }
 }
 
+// Tabela de preço de EXEMPLO (valores inventados só para desenvolvimento). Os reais são
+// definidos pela associação em POST /admin/pricing.
+async function pricing() {
+  await prisma.pricingConfigVersion.upsert({
+    where: { version: 'dev-exemplo' },
+    update: {},
+    create: {
+      version: 'dev-exemplo',
+      effectiveFrom: new Date('2026-01-01T00:00:00Z'),
+      baseCents: 300,
+      perKmCents: 150,
+      perMinuteCents: 30,
+      minimumFareCents: 700,
+    },
+  });
+}
+
 async function main() {
+  await pricing();
   await user('+5583999990001', 'Admin Exemplo', ['ADMIN']);
   await user('+5583999990002', 'Passageira Exemplo', ['PASSAGEIRO']);
   await user('+5583999990006', 'Comerciante Exemplo', ['COMERCIANTE']);

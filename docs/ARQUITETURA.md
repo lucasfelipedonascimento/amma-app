@@ -5,11 +5,12 @@
 ```
 amma-app/
 ├── apps/
-│   ├── api/       NestJS + Prisma (PostgreSQL/PostGIS): auth, account, driver, admin, legal
+│   ├── api/       NestJS + Prisma (PostgreSQL/PostGIS) + Redis: auth, account, driver, admin, legal,
+│   │              delivery (pedidos), dispatch, presence, realtime (WebSocket), ledger, pricing, routing
 │   ├── mobile/    Expo + React Native
 │   └── admin/     Next.js (reservado, etapa futura)
 ├── packages/
-│   └── shared/    @amma/shared: marca, preço, taxas, cotas, ledger, validadores, estados da corrida
+│   └── shared/    @amma/shared: marca, preço, taxas, cotas, ledger, validadores, estados da corrida e da entrega, despacho, geo
 ├── scripts/       check-imports.mjs (regra de importação)
 ├── .github/workflows/  ci-*.yml e deploy-*.yml, um par por app
 ├── docker-compose.yml  Postgres+PostGIS e Redis locais
@@ -38,3 +39,22 @@ Um workflow de CI e um de deploy por app, filtrados por `paths` (a pasta do app 
 ## Layout de node_modules
 
 `.npmrc` usa `node-linker=hoisted` porque o Metro (Expo) não lida bem com o layout em symlinks do pnpm.
+
+## API: módulos da Etapa 4 (`apps/api/src`)
+
+| Pasta       | Responsabilidade                                                                                         |
+| ----------- | -------------------------------------------------------------------------------------------------------- |
+| `delivery/` | Pedido: cotação, criação, cancelamento, andamento pelo motorista; controllers de cliente/motorista/admin |
+| `dispatch/` | Escolha do motorista, ofertas (aceitar/recusar/expirar), rotina periódica, parâmetros, regras públicas   |
+| `presence/` | Online/offline e posição: Redis (`PositionStore`) + PostGIS                                              |
+| `realtime/` | Gateway WebSocket `/ws` e registro de conexões                                                           |
+| `ledger/`   | Persistência do ledger (somente inserção) e carteira                                                     |
+| `pricing/`  | Tabelas de preço versionadas                                                                             |
+| `routing/`  | `RouteProvider` (simulado e Mapbox)                                                                      |
+
+As regras puras (estados, cancelamento, ranking do despacho, geo) ficam em `packages/shared` e são testadas lá; a API só busca dados e aplica.
+
+## Testes
+
+- `pnpm test` — unitários, sem banco (shared e api).
+- `pnpm --filter @amma/api test:int` — integração com Postgres/PostGIS e Redis reais (`docker compose up -d`). Usa o banco `amma_test` e o Redis db 15, criados/migrados automaticamente. No CI, `ci-api.yml` sobe os dois serviços.

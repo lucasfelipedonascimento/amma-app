@@ -54,6 +54,54 @@ enum RideStatus {
   EXPIRED
 }
 
+// Pedido de entrega. Deve ficar idêntico a DELIVERY_STATUSES em packages/shared (há teste que confere).
+enum DeliveryStatus {
+  CRIADO
+  OFERECIDO
+  ACEITO
+  A_CAMINHO_COLETA
+  COLETADO
+  A_CAMINHO_ENTREGA
+  ENTREGUE
+  CANCELADO
+}
+
+enum CancelReason {
+  CLIENTE_DESISTIU
+  SEM_MOTORISTA
+  COLETA_IMPOSSIVEL
+  ENTREGA_IMPOSSIVEL
+  ADMIN_CANCELOU
+}
+
+enum OfferStatus {
+  PENDENTE
+  ACEITA
+  RECUSADA
+  EXPIRADA
+  CANCELADA // pedido cancelado/liberado enquanto a oferta estava pendente
+}
+
+enum DeliveryEventType {
+  STATUS // mudança de estado do pedido
+  OFERTA // oferta enviada a um motorista
+  ACEITE
+  RECUSA
+  EXPIRACAO
+  DESISTENCIA // motorista liberou o pedido depois de aceitar
+  SEM_CANDIDATOS
+}
+
+enum LedgerKind {
+  RIDE_SETTLEMENT
+  REVERSAL
+}
+
+enum LedgerDirection {
+  DEBIT
+  CREDIT
+}
+
 model User {
   id        String    @id @default(uuid())
   // E.164 (+55...). Vira null quando a conta é excluída (anonimização, LGPD).
@@ -75,6 +123,11 @@ model User {
   vehicles      Vehicle[]
   documents     Document[]     @relation("DocumentOwner")
   reviewedDocs  Document[]     @relation("DocumentReviewer")
+
+  presence           DriverPresence?
+  deliveriesAsClient Delivery[]      @relation("DeliveryClient")
+  deliveriesAsWorker Delivery[]      @relation("DeliveryWorker")
+  deliveryOffers     DeliveryOffer[]
 }
 
 // Código de uso único enviado por SMS. Só o hash é guardado.
@@ -116,12 +169,14 @@ model Consent {
 }
 
 model DriverProfile {
-  userId    String   @id
-  fullName  String
-  cpf       String   @unique
-  birthDate DateTime @db.Date
-  updatedAt DateTime @updatedAt @db.Timestamptz(3)
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId          String   @id
+  fullName        String
+  cpf             String   @unique
+  birthDate       DateTime @db.Date
+  // Taxa de associação escolhida pelo motorista (0, 2 ou 4); vira cotas no ledger.
+  associationRate Int      @default(0)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(3)
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Vehicle {
@@ -217,4 +272,163 @@ model QuotaEntry {
   ride Ride? @relation(fields: [rideId], references: [id])
 
   @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Etapa 4: entregas, despacho, presença e ledger persistido
+// ---------------------------------------------------------------------------
+
+// Presença do motorista: online/offline e ÚLTIMA posição (PostGIS). Sem histórico de trajeto (LGPD).
+// A posição "quente" vive no Redis; aqui ela é gravada com limite de frequência.
+// "location" só é lida/escrita por SQL cru (Prisma não tem tipo geography); índice GiST na migração.
+model DriverPresence {
+  userId      String                                @id
+  online      Boolean                               @default(false)
+  onlineSince DateTime?                             @db.Timestamptz(3)
+  location    Unsupported("geography(Point,4326)")?
+  locationAt  DateTime?                             @db.Timestamptz(3)
+  updatedAt   DateTime                              @updatedAt @db.Timestamptz(3)
+  user        User                                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([location], type: Gist, map: "DriverPresence_location_gist")
+  @@index([online])
+}
+
+// Pedido de entrega. Valores em centavos; distância em metros; tempo em segundos.
+model Delivery {
+  id       String         @id @default(uuid())
+  status   DeliveryStatus @default(CRIADO)
+  clientId String
+  workerId String?
+
+  pickupLat      Float
+  pickupLng      Float
+  pickupAddress  String
+  dropoffLat     Float
+  dropoffLng     Float
+  dropoffAddress String
+  notes          String?
+
+  // Cotação feita na criação (rota do provedor + tabela de preço vigente).
+  distanceMeters  Int
+  durationSeconds Int
+  fareCents       Int
+  pricingVersion  String
+  minimumApplied  Boolean
+
+  // Preenchidos ao concluir (ENTREGUE) e nunca mais alterados.
+  platformFeeCents    Int?
+  associationFeeCents Int?
+  workerNetCents      Int?
+  associationRate     Int?
+
+  cancelReason CancelReason?
+  cancelNote   String?
+  cancelledAt  DateTime?     @db.Timestamptz(3)
+
+  // A janela de busca por motorista conta a partir de createdAt.
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  acceptedAt  DateTime? @db.Timestamptz(3)
+  pickedUpAt  DateTime? @db.Timestamptz(3)
+  deliveredAt DateTime? @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
+
+  client User            @relation("DeliveryClient", fields: [clientId], references: [id])
+  worker User?           @relation("DeliveryWorker", fields: [workerId], references: [id])
+  offers DeliveryOffer[]
+  events DeliveryEvent[]
+
+  @@index([clientId, createdAt])
+  @@index([workerId, status])
+  @@index([status])
+}
+
+// Uma oferta a um motorista. Um pedido tem no máximo uma oferta PENDENTE por vez.
+model DeliveryOffer {
+  id                String      @id @default(uuid())
+  deliveryId        String
+  driverId          String
+  status            OfferStatus @default(PENDENTE)
+  // Distância em linha reta (usada no ranking) e estimativa de rota até a coleta (informativa).
+  distanceMeters    Int
+  pickupEtaSeconds  Int?
+  pickupRouteMeters Int?
+  expiresAt         DateTime    @db.Timestamptz(3)
+  respondedAt       DateTime?   @db.Timestamptz(3)
+  declineReason     String?
+  createdAt         DateTime    @default(now()) @db.Timestamptz(3)
+  delivery          Delivery    @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  driver            User        @relation(fields: [driverId], references: [id])
+
+  @@index([deliveryId, status])
+  @@index([driverId, status])
+  @@index([status, expiresAt])
+}
+
+// Linha do tempo e registro de decisões do despacho (somente inserção).
+// `reason` usa os códigos de DISPATCH_REASONS / CANCEL_REASONS do shared.
+model DeliveryEvent {
+  id         String            @id @default(uuid())
+  deliveryId String
+  type       DeliveryEventType
+  fromStatus DeliveryStatus?
+  toStatus   DeliveryStatus?
+  actorId    String?
+  reason     String?
+  data       Json?
+  createdAt  DateTime          @default(now()) @db.Timestamptz(3)
+  delivery   Delivery          @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+
+  @@index([deliveryId, createdAt])
+}
+
+// Livro-razão em partidas dobradas (ver docs/REGRAS_FINANCEIRAS.md). SOMENTE INSERÇÃO:
+// um gatilho no banco (migração) rejeita UPDATE e DELETE. Estorno = nova transação.
+model LedgerTransaction {
+  id         String          @id @default(uuid())
+  kind       LedgerKind
+  // Id do pedido. (kind, reference) único => fechar o mesmo pedido duas vezes é impossível.
+  reference  String
+  reversalOf String?         @unique
+  createdAt  DateTime        @default(now()) @db.Timestamptz(3)
+  postings   LedgerPosting[]
+
+  @@unique([kind, reference])
+}
+
+model LedgerPosting {
+  id            String            @id @default(uuid())
+  transactionId String
+  account       String
+  direction     LedgerDirection
+  amountCents   Int
+  transaction   LedgerTransaction @relation(fields: [transactionId], references: [id])
+
+  @@index([account])
+  @@index([transactionId])
+}
+
+// Tabela de preço versionada (PricingConfig do shared). Versões nunca são editadas.
+model PricingConfigVersion {
+  version          String   @id
+  effectiveFrom    DateTime @db.Timestamptz(3)
+  baseCents        Int
+  perKmCents       Int
+  perMinuteCents   Int
+  minimumFareCents Int
+  createdById      String?
+  createdAt        DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([effectiveFrom])
+}
+
+// Parâmetros do despacho (linha única, id = 1). Sem linha => padrões do shared.
+model DispatchSettings {
+  id                    Int      @id @default(1)
+  radiusMeters          Int
+  offerTtlSeconds       Int
+  maxSearchSeconds      Int
+  maxPositionAgeSeconds Int
+  updatedById           String?
+  updatedAt             DateTime @updatedAt @db.Timestamptz(3)
 }

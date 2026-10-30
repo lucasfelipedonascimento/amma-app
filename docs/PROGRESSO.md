@@ -122,3 +122,38 @@ Telefones do seed: admin +5583999990001, passageira ...0002, motorista aprovado 
 - SMS real (provedor), armazenamento em bucket, texto jurídico da política, fonte Outfit no app.
 - Persistir o ledger no PostgreSQL e ligar às corridas; valores reais do piso; regra de cancelamento.
 - Painel web do admin (hoje a revisão de documentos é só por API).
+
+## Etapa 4 — Pedidos de entrega na API ✅
+
+**Feito** (documentação completa em `docs/API.md`)
+
+- Máquina de estados `CRIADO → OFERECIDO → ACEITO → A_CAMINHO_COLETA → COLETADO → A_CAMINHO_ENTREGA → ENTREGUE`, com `CANCELADO` e motivos (`shared/delivery-state.ts`).
+- Motorista online/offline (só aprovado); posição por WebSocket `/ws` guardada no Redis e no PostGIS (última posição, sem trajeto).
+- Despacho: oferta ao mais próximo dentro do raio, um por vez, prazo para responder, janela máxima de busca; parâmetros editáveis pelo admin; regras públicas em `GET /dispatch/rules`; registro do motivo de cada decisão em `DeliveryEvent`. Recusar/expirar/ficar offline não pune.
+- Rotas atrás de `RouteProvider` (simulado e Mapbox). Preço da entrega = rota + tabela versionada (`PricingConfigVersion`).
+- Ao `ENTREGUE`: taxas congeladas e fechamento gravado no ledger persistido (somente inserção, garantido por gatilho no banco), na mesma transação. `GET /driver/wallet` mostra saldo e cotas.
+- Testes: shared 86 (+21), api 28 unitários, **41 de integração** do fluxo completo (feliz, ledger, recusa/expiração/janela, concorrência, cancelamentos, autorização, WebSocket, Redis/PostGIS, exclusão de conta).
+
+**Como rodar**
+
+```
+pnpm install && pnpm db:up
+cd apps/api && pnpm prisma:deploy && pnpm db:seed && cd ../..   # seed inclui tabela de preço de EXEMPLO
+pnpm build && pnpm test && pnpm lint && pnpm typecheck
+pnpm --filter @amma/api test:int     # precisa de Postgres e Redis (pnpm db:up); usa banco amma_test e Redis db 15
+API_PORT=3000 node apps/api/dist/main.js
+```
+
+Variáveis novas: `ROUTE_PROVIDER` (`simulated`|`mapbox`), `MAPBOX_ACCESS_TOKEN`, `DISPATCH_TICK_MS` (ver `.env.example`).
+
+**Falta / pendências**
+
+- **Confirmar:** "raio e tempo configuráveis" foi lido como raio + prazo da oferta + tempo máximo de busca + idade máxima da posição. Se "tempo" era um limite de ETA até a coleta, é um campo a mais.
+- Adaptador do Mapbox testado só com respostas simuladas (sem chave real). Google Routes não implementado.
+- Valores reais da tabela de preço (o seed é de exemplo) e regra de cancelamento (multa/ressarcimento: hoje cancelar não gera lançamento, nem para o motorista que já coletou).
+- Estorno persistido no ledger (a regra existe só em memória no `shared`).
+- Prova de entrega (PIN/foto) e checagem de proximidade nos passos do motorista; idempotência na criação do pedido (duplo toque cria 2 pedidos).
+- WebSocket em memória (1 instância); com mais instâncias, Redis pub/sub. Sem push notification quando o app está fechado.
+- Telas do app para tudo isso (nenhuma tela foi criada nesta etapa) e painel admin.
+- Remover `QuotaAccount`/`QuotaEntry` e `Ride.type = DELIVERY`, hoje sem uso.
+- Retenção de endereços e do registro de decisões (LGPD).

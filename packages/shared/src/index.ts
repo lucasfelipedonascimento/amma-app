@@ -8,3 +8,6 @@ export * from './ride-state';
 export * from './validators';
 export * from './driver-approval';
 export * from './roles';
+export * from './geo';
+export * from './delivery-state';
+export * from './dispatch';

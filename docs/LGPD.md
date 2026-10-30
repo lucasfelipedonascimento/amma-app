@@ -7,6 +7,8 @@
 | **Minimização**                 | Só são coletados telefone, nome e, para motoristas, CPF, nascimento, veículo e documentos.                                                                                                                                                                                                                                                |
 | **Exclusão de conta**           | `DELETE /me`: apaga documentos (banco e arquivos), veículos, perfil, consentimentos, sessões e códigos OTP; anonimiza o usuário (telefone, nome e papéis removidos, `deletedAt` preenchido). Corridas e lançamentos financeiros permanecem **sem identificação** (obrigação contábil). O mesmo telefone pode abrir uma conta nova depois. |
 | **Armazenamento de documentos** | Arquivo salvo com nome aleatório, validado pelos bytes (JPG/PNG/PDF, até 5 MB). Somente ADMIN consegue baixar. Em produção, usar bucket privado com criptografia.                                                                                                                                                                         |
+| **Localização do motorista**    | Só enquanto está online. Guarda-se apenas a **última** posição (Redis, expira em 2 min sem atualização; PostGIS, no máx. 1 gravação/5 s), **sem histórico de trajeto**. Ficar offline ou excluir a conta apaga as duas. O cliente só vê a posição durante a entrega em andamento.                                                         |
+| **Dados do pedido**             | O cliente vê do motorista apenas id e nome (nunca telefone). Pedidos e lançamentos financeiros ficam após a exclusão da conta, sem vínculo de identificação; **os endereços de coleta/entrega ficam nos pedidos antigos** (ver pendências). Conta com pedido em andamento não pode ser excluída.                                          |
 | **Segredos**                    | OTP, refresh tokens e senhas nunca são guardados em texto: só hashes (HMAC / SHA-256).                                                                                                                                                                                                                                                    |
 
 ## Pendências (antes de produção)
@@ -15,3 +17,5 @@
 - Prazos de retenção por tipo de dado e rotina de expurgo.
 - Exportação dos dados do titular (direito de acesso/portabilidade).
 - Registro de acesso dos administradores aos documentos (auditoria).
+- Definir por quanto tempo guardar endereços e notas dos pedidos concluídos e rotina para anonimizá-los.
+- Registro de decisões do despacho (`DeliveryEvent`) contém ids de motoristas e distâncias; definir prazo de retenção.

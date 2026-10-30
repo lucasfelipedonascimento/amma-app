@@ -5,6 +5,7 @@ import { AccountService } from './account/account.service';
 import { AdminController } from './admin/admin.controller';
 import { AppController } from './app.controller';
 import { AuthModule } from './auth/auth.module';
+import { DeliveryModule } from './delivery/delivery.module';
 import { DriverController } from './driver/driver.controller';
 import { DriverService } from './driver/driver.service';
 import { LegalController } from './legal/legal.controller';
@@ -13,6 +14,7 @@ import { LegalController } from './legal/legal.controller';
   imports: [
     ConfigModule.forRoot({ isGlobal: true, envFilePath: ['.env', '../../.env'] }),
     AuthModule,
+    DeliveryModule,
   ],
   controllers: [
     AppController,

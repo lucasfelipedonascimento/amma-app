@@ -62,4 +62,12 @@ Regras do `Ledger`:
 3. **Estorno:** `reverse(id)` grava uma nova transação com débitos e créditos invertidos (`reversalOf = id`). Cada transação só é estornada **uma vez**; estorno não é estornável. Para corrigir um erro: estornar e lançar de novo.
 4. IDs de transação são únicos (idempotência no fechamento da corrida).
 
-> A persistência do ledger no PostgreSQL (tabela somente-inserção) entra quando as corridas forem implementadas.
+## 5. Persistência (Etapa 4)
+
+O ledger agora vive no PostgreSQL (`LedgerTransaction` + `LedgerPosting`), gravado pelo serviço `LedgerService` com as partidas montadas por `buildRideSettlement`:
+
+- **Quando:** ao `ENTREGUE` de um pedido de entrega, na mesma transação que muda o estado e congela as taxas no pedido.
+- **Somente inserção, garantida pelo banco:** gatilho recusa `UPDATE` e `DELETE`; `amountCents > 0`; `(kind, reference)` único.
+- **Taxa de associação:** vem de `DriverProfile.associationRate` no momento da conclusão.
+- **Cotas:** `GET /driver/wallet` deriva cotas e fração do saldo da conta `WORKER_QUOTAS:<id>` (as tabelas antigas `QuotaAccount`/`QuotaEntry` não são mais usadas).
+- **Estorno:** a regra existe no `Ledger` em memória do shared; o endpoint/serviço de estorno persistido ainda não foi implementado.

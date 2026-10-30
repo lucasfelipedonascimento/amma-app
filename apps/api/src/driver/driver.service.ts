@@ -57,6 +57,16 @@ export class DriverService {
     }
   }
 
+  /** Taxa de associação escolhida (0, 2 ou 4%); vale para as próximas entregas concluídas. */
+  async setAssociationRate(userId: string, rate: 0 | 2 | 4) {
+    const r = await this.prisma.driverProfile.updateMany({
+      where: { userId },
+      data: { associationRate: rate },
+    });
+    if (r.count === 0) throw new ConflictException('Preencha seus dados de motorista primeiro');
+    return { associationRate: rate };
+  }
+
   listVehicles(userId: string) {
     return this.prisma.vehicle.findMany({ where: { userId }, orderBy: { createdAt: 'asc' } });
   }

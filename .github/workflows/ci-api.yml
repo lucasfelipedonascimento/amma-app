@@ -28,6 +28,22 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    # Testes de integração usam Postgres+PostGIS e Redis reais.
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env: { POSTGRES_USER: amma, POSTGRES_PASSWORD: amma_dev, POSTGRES_DB: amma }
+        ports: ['5433:5432']
+        options: >-
+          --health-cmd "pg_isready -U amma" --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://amma:amma_dev@localhost:5433/amma?schema=public
+      REDIS_URL: redis://localhost:6379
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -36,3 +52,4 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm check:imports
       - run: pnpm turbo run lint typecheck test build --filter=@amma/api...
+      - run: pnpm --filter @amma/api test:int

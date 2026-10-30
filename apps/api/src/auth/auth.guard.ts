@@ -19,6 +19,12 @@ export class AuthGuard implements CanActivate {
     const req = context.switchToHttp().getRequest();
     const [type, token] = (req.headers.authorization ?? '').split(' ');
     if (type !== 'Bearer' || !token) throw new UnauthorizedException();
+    req.user = await this.authenticate(token);
+    return true;
+  }
+
+  /** Valida o token e carrega o usuário. Também usado pelo WebSocket. */
+  async authenticate(token: string): Promise<AuthUser> {
     let sub: string;
     try {
       sub = (await this.jwt.verifyAsync<{ sub: string }>(token)).sub;
@@ -27,7 +33,6 @@ export class AuthGuard implements CanActivate {
     }
     const user = await this.prisma.user.findUnique({ where: { id: sub } });
     if (!user || user.deletedAt) throw new UnauthorizedException();
-    req.user = { id: user.id, roles: user.roles } satisfies AuthUser;
-    return true;
+    return { id: user.id, roles: user.roles } satisfies AuthUser;
   }
 }

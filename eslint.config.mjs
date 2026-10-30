@@ -22,4 +22,9 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    // Testes de integração leem JSON de respostas HTTP: `any` ali é prático e inofensivo.
+    files: ['apps/api/test/**/*.ts'],
+    rules: { '@typescript-eslint/no-explicit-any': 'off' },
+  },
 );
