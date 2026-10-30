@@ -2,6 +2,37 @@
 
 Rode tudo a partir da raiz do projeto (`/home/lucas/Documentos/projetos/amma-app`), salvo quando indicado.
 
+## 0. Executar o sistema (início rápido)
+
+Uma vez só, na primeira vez: `pnpm install`, `cp .env.example .env` (e preencha `JWT_SECRET` com `openssl rand -hex 32`).
+
+Depois, um comando por terminal, sempre a partir da raiz, nesta ordem:
+
+| Terminal | Comando                                                                      | O que executa                                                                                                                   |
+| -------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| 1        | `pnpm db:up`                                                                 | Sobe o Postgres (porta 5433) e o Redis (6379) no Docker. Termina e devolve o terminal.                                          |
+| 1        | `cd apps/api && pnpm prisma:deploy && pnpm db:seed && cd ../..`              | Cria as tabelas e os usuários de exemplo (só na primeira vez ou após migração nova).                                            |
+| 1        | `pnpm build`                                                                 | Compila `shared` e `api`. A API roda o código compilado, então rode de novo sempre que mudar a API ou o `shared`.               |
+| 2        | `API_PORT=3000 node apps/api/dist/main.js`                                   | **API** em `http://localhost:3000`. Fica ocupando o terminal. Confira com `curl localhost:3000/health` (responde `status: ok`). |
+| 3        | `pnpm --filter @amma/admin dev`                                              | **Painel admin** (Next.js) em `http://localhost:3001`, com recarga automática. Fica ocupando o terminal. Exige a API no ar.     |
+| 4        | `cd apps/mobile && EXPO_PUBLIC_API_URL=http://SEU_IP:3000 npx expo start -c` | **App** (Metro/Expo). `SEU_IP` vem de `hostname -I`. Detalhes na seção 1.                                                       |
+
+Para abrir o admin: acesse `http://localhost:3001`, entre com `+5583999990001` (admin) ou `+5583999990003` (sócio, só transparência). O código de login aparece na tela no modo simulado.
+
+Se a API estiver em outro endereço/porta, suba o admin assim: `ADMIN_API_URL=http://localhost:3000 pnpm --filter @amma/admin dev`.
+
+**Admin não abre?**
+
+| Sintoma                                                | Causa e solução                                                                                                                                              |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `EADDRINUSE: address already in use :::3001`           | O painel (ou outro programa) já está rodando na 3001, provavelmente em outro terminal. Abra `http://localhost:3001`, ou libere a porta: `fuser -k 3001/tcp`. |
+| Mesmo erro na API (`:3000`)                            | Já há uma API rodando. Veja quem usa com `ss -ltnp \| grep :3000` e pare com `fuser -k 3000/tcp`.                                                            |
+| Painel abre, mas o login dá erro ou não chega o código | A API não está de pé. Teste `curl localhost:3000/health`; se falhar, suba a API (terminal 2) e confira `pnpm db:up`.                                         |
+| `next: command not found` ou módulo não encontrado     | Faltou instalar. Rode `pnpm install` na raiz e tente de novo.                                                                                                |
+| Erro de `@amma/shared` ao subir o painel               | O `shared` não está compilado. Rode `pnpm build` na raiz.                                                                                                    |
+
+Para parar qualquer um dos processos: `Ctrl+C` no terminal dele. Para parar o banco: `pnpm db:down`.
+
 ## 1. Subir o ambiente para desenvolver
 
 Ordem normal, cada item em um terminal.
