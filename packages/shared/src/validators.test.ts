@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { isValidCpf, isValidVehicleYear, normalizeBrazilPhone, normalizePlate } from './validators';
+import {
+  isValidCpf,
+  isValidVehicleYear,
+  maskCpf,
+  maskDate,
+  maskPlate,
+  normalizeBrazilPhone,
+  normalizePlate,
+  parseBrDate,
+} from './validators';
 
 describe('normalizeBrazilPhone', () => {
   it.each([
@@ -45,5 +54,43 @@ describe('isValidVehicleYear', () => {
     expect(isValidVehicleYear(2028, now)).toBe(false);
     expect(isValidVehicleYear(1979, now)).toBe(false);
     expect(isValidVehicleYear(2020.5, now)).toBe(false);
+  });
+});
+
+describe('máscaras', () => {
+  it('maskDate: 19092001 → 19/09/2001, também parcial e com lixo', () => {
+    expect(maskDate('19092001')).toBe('19/09/2001');
+    expect(maskDate('1')).toBe('1');
+    expect(maskDate('190')).toBe('19/0');
+    expect(maskDate('1909')).toBe('19/09');
+    expect(maskDate('19/09/2001')).toBe('19/09/2001');
+    expect(maskDate('190920012345')).toBe('19/09/2001');
+  });
+  it('maskCpf', () => {
+    expect(maskCpf('52998224725')).toBe('529.982.247-25');
+    expect(maskCpf('5299')).toBe('529.9');
+    expect(maskCpf('529982247')).toBe('529.982.247');
+    expect(maskCpf('529.982.247-25999')).toBe('529.982.247-25');
+  });
+  it('maskPlate: maiúsculas, sem símbolos, máx. 7', () => {
+    expect(maskPlate('abc1d23')).toBe('ABC1D23');
+    expect(maskPlate('abc-1234')).toBe('ABC1234');
+    expect(maskPlate('ABC1D23XYZ')).toBe('ABC1D23');
+  });
+  it('máscaras produzem entradas aceitas pelos validadores', () => {
+    expect(isValidCpf(maskCpf('52998224725'))).toBe(true);
+    expect(normalizePlate(maskPlate('abc1d23'))).toBe('ABC1D23');
+  });
+});
+
+describe('parseBrDate', () => {
+  it('converte para ISO', () => expect(parseBrDate('19/09/2001')).toBe('2001-09-19'));
+  it.each(['19092001', '31/02/2001', '00/01/2001', '10/13/2001', '19/09/1800', ''])(
+    'rejeita %s',
+    (v) => expect(parseBrDate(v)).toBeNull(),
+  );
+  it('aceita 29/02 em ano bissexto e rejeita fora dele', () => {
+    expect(parseBrDate('29/02/2000')).toBe('2000-02-29');
+    expect(parseBrDate('29/02/2001')).toBeNull();
   });
 });

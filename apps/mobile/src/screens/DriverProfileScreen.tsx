@@ -1,6 +1,14 @@
 import { useState } from 'react';
 import { Text } from 'react-native';
-import { isValidCpf, isValidVehicleYear, normalizePlate } from '@amma/shared';
+import {
+  isValidCpf,
+  isValidVehicleYear,
+  maskCpf,
+  maskDate,
+  maskPlate,
+  normalizePlate,
+  parseBrDate,
+} from '@amma/shared';
 import { ApiError, api } from '../api';
 import { Button, ErrorText, Field, Screen } from '../ui';
 
@@ -24,8 +32,8 @@ export function DriverProfileScreen({
 
   const submit = async () => {
     setError(null);
-    const m = birth.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-    if (!m) return setError('Data de nascimento no formato DD/MM/AAAA');
+    const birthDate = parseBrDate(birth);
+    if (!birthDate) return setError('Data de nascimento inválida. Use DD/MM/AAAA');
     if (!isValidCpf(cpf)) return setError('CPF inválido');
     if (!normalizePlate(plate)) return setError('Placa inválida');
     if (!isValidVehicleYear(Number(year))) return setError('Ano do veículo inválido');
@@ -33,7 +41,7 @@ export function DriverProfileScreen({
     try {
       await api('/driver/profile', {
         method: 'PUT',
-        body: { fullName, cpf, birthDate: `${m[3]}-${m[2]}-${m[1]}` },
+        body: { fullName, cpf, birthDate },
       });
       await api('/driver/vehicles', { body: { type, plate, model, year: Number(year) } });
       onDone();
@@ -55,14 +63,16 @@ export function DriverProfileScreen({
       <Field
         label="CPF"
         value={cpf}
-        onChangeText={setCpf}
+        onChangeText={(v) => setCpf(maskCpf(v))}
+        maxLength={14}
         keyboardType="number-pad"
         placeholder="000.000.000-00"
       />
       <Field
         label="Data de nascimento"
         value={birth}
-        onChangeText={setBirth}
+        onChangeText={(v) => setBirth(maskDate(v))}
+        maxLength={10}
         keyboardType="number-pad"
         placeholder="DD/MM/AAAA"
       />
@@ -75,8 +85,10 @@ export function DriverProfileScreen({
       <Field
         label="Placa"
         value={plate}
-        onChangeText={setPlate}
+        onChangeText={(v) => setPlate(maskPlate(v))}
         autoCapitalize="characters"
+        autoCorrect={false}
+        maxLength={7}
         placeholder="ABC1D23"
       />
       <Field label="Modelo" value={model} onChangeText={setModel} placeholder="Honda CG 160" />
