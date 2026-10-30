@@ -112,7 +112,9 @@ function GroupDetail({ id, onBack }: { id: string; onBack: () => void }) {
       setNotice(
         c.status === 'CONFIRMADO'
           ? 'Aporte registrado.'
-          : `O parceiro recusou o aporte: ${c.declineReason ?? 'sem motivo informado'}.`,
+          : c.status === 'PENDENTE'
+            ? `Aporte registrado. Falta pagar ao parceiro${c.instructions ? `: ${c.instructions}` : ''}. Ele só conta depois que o parceiro confirmar.`
+            : `O parceiro recusou o aporte: ${c.declineReason ?? 'sem motivo informado'}.`,
       );
       await Promise.all([group.reload(), mine.reload()]);
     });
@@ -201,9 +203,21 @@ function GroupDetail({ id, onBack }: { id: string; onBack: () => void }) {
                   {mine.data?.items.map((c) => (
                     <Row
                       key={c.id}
-                      label={c.status === 'CONFIRMADO' ? 'Confirmado' : 'Recusado'}
+                      label={
+                        c.status === 'CONFIRMADO'
+                          ? 'Confirmado'
+                          : c.status === 'PENDENTE'
+                            ? 'Aguardando o parceiro'
+                            : 'Recusado'
+                      }
                       value={formatBRL(c.amountCents)}
-                      color={c.status === 'CONFIRMADO' ? colors.ok : colors.red}
+                      color={
+                        c.status === 'CONFIRMADO'
+                          ? colors.ok
+                          : c.status === 'PENDENTE'
+                            ? colors.warn
+                            : colors.red
+                      }
                     />
                   ))}
                   {g.status === 'ABERTO' ? (

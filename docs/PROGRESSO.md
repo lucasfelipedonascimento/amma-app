@@ -475,3 +475,15 @@ Foco combinado: deixar pronto para conectar (nenhum provedor contratado ou chama
 - Com canal real o código **não** volta na resposta; falha do provedor vira 503 genérico (detalhe só no log, telefone mascarado).
 - Passo a passo em `docs/INTEGRACAO_OTP.md`.
 - **Falta (👤):** escolher SMS ou WhatsApp, contratar, limite de gasto no painel do provedor, remetente/template aprovado.
+
+## Trocar o simulado pelo real — integração 4: parceiro financeiro (2026-10-30)
+
+Foco combinado: deixar pronto para conectar qualquer parceiro (nenhum contratado ou chamado).
+
+- `PurchasePartner` agora cobre o que parceiro real faz: o aporte pode ficar **PENDENTE** (sócio paga ao parceiro) e ser confirmado depois. Novos: `fetchContribution` (conciliação) e `parseWebhook` (assinatura). Resultado passou a ser `{status: CONFIRMADO | PENDENTE | RECUSADO}`.
+- `POST /partner/webhook` (público, protegido pela assinatura): confirma/recusa o aporte, ignora aviso repetido (`PartnerWebhookEvent`), lança no ledger uma vez só.
+- Conciliação periódica no `AssociationScheduler` para aviso perdido. Quem tem aporte pendente também não sai da fila.
+- Registro de parceiros (`REAL_PARTNERS`); modo sem parceiro registrado não sobe; `PARTNER_WEBHOOK_SECRET` obrigatório em produção.
+- Migração `20261106120000_parceiro_aporte_pendente` (rode `prisma:deploy`). App mostra "Aguardando o parceiro" e as instruções de pagamento.
+- Passo a passo e decisões jurídicas: `docs/INTEGRACAO_PARCEIRO.md`.
+- **Falta (👤):** escolher e contratar o parceiro (com advogado), definir devolução/desistência e entrega do veículo. Quando as 4 integrações estiverem contratadas, falta só escrever os adaptadores.

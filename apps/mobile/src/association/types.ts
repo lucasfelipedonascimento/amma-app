@@ -87,8 +87,10 @@ export interface PurchaseGroupDetail extends Omit<PurchaseGroupItem, 'queueSize'
 export interface Contribution {
   id: string;
   amountCents: number;
-  status: 'CONFIRMADO' | 'RECUSADO';
+  status: 'PENDENTE' | 'CONFIRMADO' | 'RECUSADO';
   declineReason: string | null;
+  /** Como pagar ao parceiro (só enquanto PENDENTE). */
+  instructions: string | null;
   partner: string;
   createdAt: string;
 }

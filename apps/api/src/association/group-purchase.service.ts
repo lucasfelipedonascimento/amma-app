@@ -4,7 +4,9 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
+  UnauthorizedException,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import {
@@ -21,7 +23,14 @@ import { LedgerService } from '../ledger/ledger.service';
 import { PrismaService } from '../prisma.service';
 import { ContributionDto, CreateGroupDto } from './dto';
 import { MembersService } from './members.service';
-import { PURCHASE_PARTNER, PartnerUnavailableError, type PurchasePartner } from './partner';
+import {
+  InvalidPartnerWebhookError,
+  PURCHASE_PARTNER,
+  PartnerUnavailableError,
+  type PartnerEvent,
+  type PartnerResult,
+  type PurchasePartner,
+} from './partner';
 import { PurchaseRulesService } from './purchase-rules.service';
 
 /** UUID estável a partir de um texto: a mesma chave de idempotência dá sempre o mesmo aporte. */
@@ -31,11 +40,13 @@ function uuidFrom(text: string): string {
 }
 
 /**
- * Compra coletiva de veículos. Sem movimentação de dinheiro real: o aporte é "pago" ao parceiro
- * (interface simulada) e só depois que ele aceita é que vira lançamento no ledger.
+ * Compra coletiva de veículos. A AMMA não move dinheiro: o sócio paga ao parceiro e o aporte só vira
+ * lançamento no ledger quando o parceiro CONFIRMA (na hora, por aviso assinado ou pela conciliação).
  */
 @Injectable()
 export class GroupPurchaseService {
+  private readonly logger = new Logger('CompraColetiva');
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly members: MembersService,
@@ -221,7 +232,7 @@ export class GroupPurchaseService {
         'Quem foi contemplado não sai da fila por aqui. Fale com a associação.',
       );
     const paid = await this.prisma.contribution.count({
-      where: { groupId, userId, status: 'CONFIRMADO' },
+      where: { groupId, userId, status: { in: ['CONFIRMADO', 'PENDENTE'] } },
     });
     if (paid > 0)
       throw new ConflictException(
@@ -254,7 +265,7 @@ export class GroupPurchaseService {
         `O aporte mínimo é de ${(rules.minContributionCents / 100).toFixed(2).replace('.', ',')} reais`,
       );
 
-    let result;
+    let result: PartnerResult;
     try {
       result = await this.partner.registerContribution({
         reference: id,
@@ -277,25 +288,16 @@ export class GroupPurchaseService {
             groupId,
             userId,
             amountCents: dto.amountCents,
-            status: result.accepted ? 'CONFIRMADO' : 'RECUSADO',
+            status: result.status,
             partner: this.partner.name,
-            partnerRef: result.accepted ? result.partnerRef : null,
-            declineReason: result.accepted ? null : result.reason,
+            partnerRef: result.status === 'RECUSADO' ? null : result.partnerRef,
+            declineReason: result.status === 'RECUSADO' ? result.reason : null,
+            instructions: result.status === 'PENDENTE' ? (result.instructions ?? null) : null,
+            confirmedAt: result.status === 'CONFIRMADO' ? new Date() : null,
             idempotencyKey: dto.idempotencyKey,
           },
         });
-        if (result.accepted)
-          await this.ledger.post(
-            tx,
-            buildGroupContribution({
-              id: randomUUID(),
-              contributionId: id,
-              groupId,
-              userId,
-              amountCents: dto.amountCents,
-              createdAt: new Date().toISOString(),
-            }),
-          );
+        if (result.status === 'CONFIRMADO') await this.postToLedger(tx, c);
         return c;
       });
       return this.contributionView(row);
@@ -306,6 +308,128 @@ export class GroupPurchaseService {
       }
       throw e;
     }
+  }
+
+  // ------------------------------------------------------------------ parceiro (confirmação assíncrona)
+
+  /** Aviso do parceiro (webhook). A assinatura vem validada pelo parceiro; sem ela, 401 e nada muda. */
+  async handlePartnerWebhook(
+    rawBody: Buffer,
+    headers: Record<string, string | string[] | undefined>,
+  ) {
+    let event: PartnerEvent | null;
+    try {
+      event = this.partner.parseWebhook(rawBody, headers);
+    } catch (e) {
+      if (e instanceof InvalidPartnerWebhookError) throw new UnauthorizedException();
+      throw e;
+    }
+    if (event) await this.handlePartnerEvent(event);
+    return { received: true };
+  }
+
+  /**
+   * Trata um aviso já validado. Idempotente por (parceiro, eventId): o parceiro reenvia avisos, e
+   * repetir não pode lançar o aporte duas vezes.
+   */
+  async handlePartnerEvent(e: PartnerEvent): Promise<void> {
+    const key = { partner: this.partner.name, eventId: e.eventId };
+    try {
+      await this.prisma.partnerWebhookEvent.create({ data: { ...key, type: e.outcome } });
+    } catch (err) {
+      if ((err as { code?: string }).code === 'P2002') return;
+      throw err;
+    }
+    try {
+      await this.applyOutcome(
+        e.partnerRef,
+        e.outcome === 'CONFIRMADO'
+          ? { status: 'CONFIRMADO', partnerRef: e.partnerRef }
+          : { status: 'RECUSADO', reason: e.reason ?? 'Recusado pelo parceiro' },
+      );
+    } catch (err) {
+      // Falha nossa: apaga o registro para o parceiro poder reenviar e tentarmos de novo.
+      await this.prisma.partnerWebhookEvent.deleteMany({ where: key }).catch(() => undefined);
+      throw err;
+    }
+  }
+
+  /**
+   * Conciliação: pergunta ao parceiro pelos aportes PENDENTES parados há mais de `olderThanMs`.
+   * Cobre o aviso que se perdeu. Não lança: um aporte com problema não trava os demais.
+   */
+  async reconcilePending(olderThanMs = 5 * 60_000, limit = 50): Promise<number> {
+    const rows = await this.prisma.contribution.findMany({
+      where: {
+        status: 'PENDENTE',
+        partner: this.partner.name,
+        partnerRef: { not: null },
+        createdAt: { lt: new Date(Date.now() - olderThanMs) },
+      },
+      orderBy: { createdAt: 'asc' },
+      take: limit,
+    });
+    let resolved = 0;
+    for (const row of rows) {
+      try {
+        const r = await this.partner.fetchContribution(row.partnerRef!);
+        if (r.status === 'PENDENTE') continue;
+        if (await this.applyOutcome(row.partnerRef!, r)) resolved++;
+      } catch (err) {
+        this.logger.warn(`Conciliação do aporte ${row.id} falhou: ${(err as Error).message}`);
+      }
+    }
+    return resolved;
+  }
+
+  /**
+   * Muda um aporte PENDENTE para o resultado final, uma vez só (a troca de status é condicional e o
+   * lançamento no ledger vai na mesma transação). Aporte que já estava decidido é ignorado.
+   */
+  private async applyOutcome(partnerRef: string, r: PartnerResult): Promise<boolean> {
+    if (r.status === 'PENDENTE') return false;
+    return this.prisma.$transaction(async (tx) => {
+      const c = await tx.contribution.findUnique({
+        where: { partner_partnerRef: { partner: this.partner.name, partnerRef } },
+      });
+      if (!c) {
+        // Aporte que não conhecemos: registra e segue (reenviar o aviso não adianta).
+        this.logger.warn(`Aviso do parceiro para aporte desconhecido ${partnerRef}`);
+        return false;
+      }
+      if (c.status !== 'PENDENTE') {
+        if (c.status !== r.status)
+          this.logger.warn(`Parceiro diz ${r.status}, mas o aporte ${c.id} já está ${c.status}`);
+        return false;
+      }
+      const moved = await tx.contribution.updateMany({
+        where: { id: c.id, status: 'PENDENTE' },
+        data:
+          r.status === 'CONFIRMADO'
+            ? { status: 'CONFIRMADO', confirmedAt: new Date(), instructions: null }
+            : { status: 'RECUSADO', declineReason: r.reason, instructions: null },
+      });
+      if (moved.count === 0) return false;
+      if (r.status === 'CONFIRMADO') await this.postToLedger(tx, c);
+      return true;
+    });
+  }
+
+  private postToLedger(
+    tx: Prisma.TransactionClient,
+    c: { id: string; groupId: string; userId: string; amountCents: number },
+  ) {
+    return this.ledger.post(
+      tx,
+      buildGroupContribution({
+        id: randomUUID(),
+        contributionId: c.id,
+        groupId: c.groupId,
+        userId: c.userId,
+        amountCents: c.amountCents,
+        createdAt: new Date().toISOString(),
+      }),
+    );
   }
 
   async myContributions(userId: string, groupId: string) {
@@ -326,6 +450,7 @@ export class GroupPurchaseService {
     amountCents: number;
     status: string;
     declineReason: string | null;
+    instructions: string | null;
     partner: string;
     createdAt: Date;
   }) {
@@ -335,6 +460,8 @@ export class GroupPurchaseService {
       amountCents: c.amountCents,
       status: c.status,
       declineReason: c.declineReason,
+      // Só enquanto aguarda o pagamento ao parceiro.
+      instructions: c.status === 'PENDENTE' ? c.instructions : null,
       partner: c.partner,
       createdAt: c.createdAt,
     };

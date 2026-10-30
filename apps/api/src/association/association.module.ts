@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { LedgerService } from '../ledger/ledger.service';
 import { AssemblyService } from './assembly.service';
 import { AssociationController, AdminAssociationController } from './association.controller';
+import { PartnerWebhookController } from './partner-webhook.controller';
 import { AssociationScheduler } from './association.scheduler';
 import { AssociationService } from './association.service';
 import { GroupPurchaseService } from './group-purchase.service';
@@ -14,7 +15,7 @@ import { SurplusService } from './surplus.service';
 
 /** Etapa 8: cotas e nível, assembleia, compra coletiva, seguro mútuo e sobras anuais. */
 @Module({
-  controllers: [AssociationController, AdminAssociationController],
+  controllers: [AssociationController, AdminAssociationController, PartnerWebhookController],
   exports: [MembersService, AssemblyService, GroupPurchaseService],
   providers: [
     LedgerService,

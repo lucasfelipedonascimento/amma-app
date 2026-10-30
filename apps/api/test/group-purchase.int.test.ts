@@ -1,4 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { SandboxPurchasePartner, SANDBOX_PARTNER_PENDING_CENTS } from '../src/association/partner';
+import { GroupPurchaseService } from '../src/association/group-purchase.service';
 import { PurchaseRulesService } from '../src/association/purchase-rules.service';
 import { TestApp, type TestUser } from './helpers';
 
@@ -321,6 +323,132 @@ describe('compra coletiva: grupos, fila, aportes e contemplação', () => {
         where: { kind: 'GROUP_CONTRIBUTION' },
       });
       await expect(t.prisma.ledgerTransaction.delete({ where: { id: tx.id } })).rejects.toThrow();
+    });
+  });
+
+  describe('parceiro confirma depois (pendente, webhook e conciliação)', () => {
+    beforeEach(() => join(a));
+    const partner = () => t.app.get(GroupPurchaseService)['partner'] as SandboxPurchasePartner;
+    const ledgerCount = () =>
+      t.prisma.ledgerTransaction.count({ where: { kind: 'GROUP_CONTRIBUTION' } });
+    const send = async (payload: object, signature?: string) => {
+      const raw = JSON.stringify(payload);
+      const res = await fetch(`${t.baseUrl}/partner/webhook`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-amma-signature': signature ?? partner().sign(raw),
+        },
+        body: raw,
+      });
+      return res.status;
+    };
+    const pending = async () => {
+      const r = await pay(a, SANDBOX_PARTNER_PENDING_CENTS);
+      expect(r.body.status).toBe('PENDENTE');
+      const row = await t.prisma.contribution.findUniqueOrThrow({ where: { id: r.body.id } });
+      return { id: r.body.id as string, ref: row.partnerRef! };
+    };
+    const confirmed = (ref: string, id = 'evt_1') => ({
+      id,
+      type: 'contribution.confirmed',
+      partnerRef: ref,
+    });
+
+    it('pendente: aparece com instruções, não entra no ledger nem no total do grupo', async () => {
+      const r = await pay(a, SANDBOX_PARTNER_PENDING_CENTS);
+      expect(r.status).toBe(201);
+      expect(r.body).toMatchObject({ status: 'PENDENTE' });
+      expect(r.body.instructions).toMatch(/^PAGUE-SIMULADO/);
+      expect(await ledgerCount()).toBe(0);
+      expect((await detail()).fundedCents).toBe(0);
+      expect(
+        (await t.get(`/purchase-groups/${groupId}/contributions`, a.token)).body.totalCents,
+      ).toBe(0);
+    });
+
+    it('aviso assinado confirma: lança no ledger uma vez só, mesmo reenviado', async () => {
+      const p = await pending();
+      expect(await send(confirmed(p.ref))).toBe(200);
+      expect(await send(confirmed(p.ref))).toBe(200);
+      expect(await send(confirmed(p.ref, 'evt_2'))).toBe(200);
+      const c = await t.prisma.contribution.findUniqueOrThrow({ where: { id: p.id } });
+      expect(c.status).toBe('CONFIRMADO');
+      expect(c.confirmedAt).not.toBeNull();
+      expect(c.instructions).toBeNull();
+      expect(await ledgerCount()).toBe(1);
+      expect((await detail()).fundedCents).toBe(SANDBOX_PARTNER_PENDING_CENTS);
+    });
+
+    it('aviso de recusa: fica recusado, com o motivo, e nada entra no ledger', async () => {
+      const p = await pending();
+      await send({
+        id: 'e',
+        type: 'contribution.declined',
+        partnerRef: p.ref,
+        reason: 'Boleto vencido',
+      });
+      const c = await t.prisma.contribution.findUniqueOrThrow({ where: { id: p.id } });
+      expect(c).toMatchObject({ status: 'RECUSADO', declineReason: 'Boleto vencido' });
+      expect(await ledgerCount()).toBe(0);
+    });
+
+    it('sem assinatura válida: 401 e nada muda', async () => {
+      const p = await pending();
+      expect(await send(confirmed(p.ref), 'a'.repeat(64))).toBe(401);
+      expect(await send(confirmed(p.ref), 'curta')).toBe(401);
+      expect((await t.prisma.contribution.findUniqueOrThrow({ where: { id: p.id } })).status).toBe(
+        'PENDENTE',
+      );
+    });
+
+    it('avisos que não interessam ou de aporte desconhecido: 200 e nada muda', async () => {
+      const p = await pending();
+      expect(await send({ id: 'x', type: 'outro.evento', partnerRef: p.ref })).toBe(200);
+      expect(await send(confirmed('part_sbx_nao-existe', 'evt_9'))).toBe(200);
+      expect((await t.prisma.contribution.findUniqueOrThrow({ where: { id: p.id } })).status).toBe(
+        'PENDENTE',
+      );
+    });
+
+    it('confirmação depois da recusa (ou o contrário) não muda o que já foi decidido', async () => {
+      const p = await pending();
+      await send({ id: 'e1', type: 'contribution.declined', partnerRef: p.ref });
+      await send(confirmed(p.ref, 'e2'));
+      expect((await t.prisma.contribution.findUniqueOrThrow({ where: { id: p.id } })).status).toBe(
+        'RECUSADO',
+      );
+      expect(await ledgerCount()).toBe(0);
+    });
+
+    it('avisos em paralelo lançam o aporte uma vez só', async () => {
+      const p = await pending();
+      await Promise.all(Array.from({ length: 8 }, (_, i) => send(confirmed(p.ref, `evt_${i}`))));
+      expect(await ledgerCount()).toBe(1);
+    });
+
+    it('conciliação: aviso perdido é resolvido perguntando ao parceiro', async () => {
+      const p = await pending();
+      const svc = t.app.get(GroupPurchaseService);
+      expect(await svc.reconcilePending(0)).toBe(0); // parceiro ainda não decidiu
+      partner().resolve(p.ref, 'CONFIRMADO');
+      expect(await svc.reconcilePending(0)).toBe(1);
+      expect(await svc.reconcilePending(0)).toBe(0);
+      expect((await t.prisma.contribution.findUniqueOrThrow({ where: { id: p.id } })).status).toBe(
+        'CONFIRMADO',
+      );
+      expect(await ledgerCount()).toBe(1);
+    });
+
+    it('conciliação só olha aportes parados há tempo suficiente', async () => {
+      const p = await pending();
+      partner().resolve(p.ref, 'CONFIRMADO');
+      expect(await t.app.get(GroupPurchaseService).reconcilePending(60_000)).toBe(0);
+    });
+
+    it('com aporte pendente o sócio não sai da fila', async () => {
+      await pending();
+      expect((await t.post(`/purchase-groups/${groupId}/leave`, a.token)).status).toBe(409);
     });
   });
 

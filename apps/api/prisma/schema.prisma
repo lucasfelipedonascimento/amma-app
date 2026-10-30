@@ -817,6 +817,8 @@ enum QueueEntryStatus {
 }
 
 enum ContributionStatus {
+  // Registrado no parceiro, ainda sem confirmação (o sócio paga ao parceiro e ele avisa depois).
+  PENDENTE
   CONFIRMADO
   RECUSADO
 }
@@ -955,14 +957,30 @@ model Contribution {
   partner        String
   partnerRef     String?
   declineReason  String?
+  // Como o sócio paga ao parceiro (link, código Pix, linha do boleto): só enquanto PENDENTE.
+  instructions   String?
   idempotencyKey String?
   createdAt      DateTime           @default(now()) @db.Timestamptz(3)
+  confirmedAt    DateTime?          @db.Timestamptz(3)
 
   group PurchaseGroup @relation(fields: [groupId], references: [id])
   user  User          @relation(fields: [userId], references: [id])
 
   @@unique([userId, idempotencyKey])
+  @@unique([partner, partnerRef])
   @@index([groupId, status])
+  @@index([status, createdAt])
+}
+
+// Avisos (webhooks) do parceiro financeiro já processados. Receber o mesmo aviso duas vezes não repete efeito.
+model PartnerWebhookEvent {
+  id         String   @id @default(uuid())
+  partner    String
+  eventId    String
+  type       String
+  receivedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([partner, eventId])
 }
 
 // Contemplação registrada pela associação (somente inserção).

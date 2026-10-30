@@ -14,5 +14,9 @@ export function assertProductionConfig(env: Record<string, string | undefined>):
     problems.push(
       'PAYMENT_WEBHOOK_SECRET não definido (assinatura dos avisos do provedor de pagamento)',
     );
+  if (env.PURCHASE_PARTNER && env.PURCHASE_PARTNER !== 'sandbox' && !env.PARTNER_WEBHOOK_SECRET)
+    problems.push(
+      'PARTNER_WEBHOOK_SECRET não definido (assinatura dos avisos do parceiro financeiro)',
+    );
   if (problems.length) throw new Error(`Configuração de produção insegura: ${problems.join('; ')}`);
 }

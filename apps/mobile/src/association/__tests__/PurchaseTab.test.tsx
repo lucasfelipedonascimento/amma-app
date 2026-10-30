@@ -99,6 +99,7 @@ describe('compra coletiva', () => {
             amountCents: 10_000,
             status: 'CONFIRMADO',
             declineReason: null,
+            instructions: null,
             partner: 'sandbox',
             createdAt: '',
           },
@@ -115,6 +116,7 @@ describe('compra coletiva', () => {
           amountCents: 20_000,
           status: 'CONFIRMADO',
           declineReason: null,
+          instructions: null,
           partner: 'sandbox',
           createdAt: '',
         };
@@ -155,6 +157,7 @@ describe('compra coletiva', () => {
         amountCents: 2_000_000,
         status: 'RECUSADO',
         declineReason: 'Valor acima do limite do parceiro',
+        instructions: null,
         partner: 'sandbox',
         createdAt: '',
       },
@@ -165,6 +168,27 @@ describe('compra coletiva', () => {
     expect(
       await screen.findByText(/O parceiro recusou o aporte: Valor acima do limite do parceiro/),
     ).toBeTruthy();
+  });
+
+  it('aporte pendente: o aviso diz o que falta pagar e a lista mostra "Aguardando o parceiro"', async () => {
+    routes({
+      'GET /purchase-groups': [groupItem()],
+      'GET /purchase-groups/g1': groupDetail({ myStatus: 'NA_FILA' }),
+      'GET /purchase-groups/g1/contributions': mineEmpty,
+      'POST /purchase-groups/g1/contributions': {
+        id: 'k',
+        amountCents: 5_000,
+        status: 'PENDENTE',
+        declineReason: null,
+        instructions: 'PIX-DO-PARCEIRO',
+        partner: 'sandbox',
+        createdAt: '',
+      },
+    });
+    await open();
+    await fireEvent.changeText(await screen.findByLabelText('Valor do aporte (R$)'), '50');
+    await fireEvent.press(screen.getByText('Registrar aporte'));
+    expect(await screen.findByText(/Falta pagar ao parceiro: PIX-DO-PARCEIRO/)).toBeTruthy();
   });
 
   it('sair da fila; contemplado não tem botão de entrar nem de sair', async () => {

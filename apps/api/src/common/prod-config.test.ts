@@ -25,6 +25,11 @@ describe('assertProductionConfig', () => {
     expect(() => assertProductionConfig(real)).toThrow(/PAYMENT_WEBHOOK_SECRET/);
     expect(() => assertProductionConfig({ ...real, PAYMENT_WEBHOOK_SECRET: 'x' })).not.toThrow();
   });
+  it('parceiro financeiro real exige o segredo do webhook', () => {
+    const real = { ...ok, PURCHASE_PARTNER: 'cooperativa' };
+    expect(() => assertProductionConfig(real)).toThrow(/PARTNER_WEBHOOK_SECRET/);
+    expect(() => assertProductionConfig({ ...real, PARTNER_WEBHOOK_SECRET: 'x' })).not.toThrow();
+  });
   it.each([
     ['senha padrão', { DATABASE_URL: 'postgresql://amma:amma_dev@db/amma' }],
     ['sem Redis', { REDIS_URL: undefined }],
