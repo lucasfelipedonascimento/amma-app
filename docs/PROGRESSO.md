@@ -400,3 +400,18 @@ Admin do seed `+5583999990001`; sócio `+5583999990003` (o código aparece na te
 - **Painel:** sem teste visual em navegador (só HTTP e testes de componente), sem fonte Outfit embutida, sem tema escuro, sem aviso de fila nova; a lista de motoristas traz até 500 (sem paginação) e a de usuários até 50 (busca por nome/telefone). Atualização é por recarregar a página.
 - **Deploy:** `ci-admin.yml` roda lint/typecheck/test/build; `deploy-admin.yml` é esqueleto. Em produção o painel precisa de HTTPS (cookies `Secure` já ligados) e `ADMIN_API_URL` apontando para a API.
 - Herdadas: sem provedor de pagamento real, parceiro de compra/seguro e fundo por definir, WebSocket em memória, alertas de emergência sem equipe de plantão (o painel agora lista, mas ninguém é acionado).
+
+## Etapa 11 — Preparar para produção 🟡 (só auditoria e checklist; sem código)
+
+**Feito**
+
+- `docs/CHECKLIST_LANCAMENTO.md`: estado real de cada item (✅/🟡/❌/👤) em segurança (OWASP e limites de taxa), logs sem dado pessoal, LGPD, criptografia e backup, CI/CD e ambientes, observabilidade, testes ponta a ponta e publicação Google Play/App Store (inclui justificativa da localização em segundo plano), com ordem sugerida e critério de "pronto".
+
+**Achados principais**
+
+- API sem `helmet`, CORS explícito, limite de taxa geral nem validação de ambiente; `AuthGuard` é por controller (não global).
+- Não existe exportação de dados do titular; política de privacidade é placeholder; não há termos de uso.
+- Deploys são esqueleto; não há staging, Dockerfile, Sentry, `eas.json`, ícones nem capturas.
+- O app não tem tela de bloqueio/recurso; emergência continua sem plantão.
+
+**Falta:** implementar os itens das seções A–I do checklist (próxima etapa de código) e as ações 👤 (contas de loja, jurídico, provedores).
