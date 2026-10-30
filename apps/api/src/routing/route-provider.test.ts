@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  GuardedRouteProvider,
   MapboxRouteProvider,
   OsrmRouteProvider,
   RouteUnavailableError,
@@ -132,5 +133,84 @@ describe('OsrmRouteProvider', () => {
         vi.fn(async () => Promise.reject(new Error('rede'))),
       ).route(A, B),
     ).rejects.toBeInstanceOf(RouteUnavailableError);
+  });
+});
+
+describe('GuardedRouteProvider', () => {
+  function memoryStore() {
+    const data = new Map<string, string>();
+    return {
+      data,
+      get: async (k: string) => data.get(k) ?? null,
+      set: async (k: string, v: string) => void data.set(k, v),
+      incr: async (k: string) => {
+        const n = Number(data.get(k) ?? 0) + 1;
+        data.set(k, String(n));
+        return n;
+      },
+      expire: async () => 1,
+    };
+  }
+  const inner = () => {
+    const route = vi.fn(async () => ({ distanceMeters: 100, durationSeconds: 20 }));
+    return { route, provider: { route } };
+  };
+
+  it('rota repetida sai do cache e não gasta o teto', async () => {
+    const { route, provider } = inner();
+    const g = new GuardedRouteProvider(provider, memoryStore(), {
+      dailyLimit: 10,
+      cacheTtlSeconds: 60,
+    });
+    await g.route(A, B);
+    await g.route(A, B);
+    // diferença de ~1 m cai na mesma chave
+    await g.route({ ...A, lat: A.lat + 0.00001 }, B);
+    expect(route).toHaveBeenCalledTimes(1);
+  });
+
+  it('traçado não vai para o cache', async () => {
+    const { route, provider } = inner();
+    const g = new GuardedRouteProvider(provider, memoryStore(), {
+      dailyLimit: 10,
+      cacheTtlSeconds: 60,
+    });
+    await g.route(A, B, { withPath: true });
+    await g.route(A, B, { withPath: true });
+    expect(route).toHaveBeenCalledTimes(2);
+  });
+
+  it('acima do teto diário recusa sem chamar o provedor; no dia seguinte volta', async () => {
+    const { route, provider } = inner();
+    let now = new Date('2026-10-30T12:00:00Z');
+    const g = new GuardedRouteProvider(provider, memoryStore(), {
+      dailyLimit: 2,
+      cacheTtlSeconds: 60,
+      now: () => now,
+    });
+    const pts = [0, 1, 2].map((i) => ({ lat: -7.1 - i * 0.01, lng: -34.86 }));
+    await g.route(A, pts[0]);
+    await g.route(A, pts[1]);
+    await expect(g.route(A, pts[2])).rejects.toBeInstanceOf(RouteUnavailableError);
+    expect(route).toHaveBeenCalledTimes(2);
+    // o que já está em cache continua respondendo
+    await expect(g.route(A, pts[0])).resolves.toBeDefined();
+    now = new Date('2026-10-31T00:00:01Z');
+    await expect(g.route(A, pts[2])).resolves.toBeDefined();
+  });
+
+  it('Redis fora do ar: segue consultando o provedor', async () => {
+    const { route, provider } = inner();
+    const boom = async () => {
+      throw new Error('redis fora');
+    };
+    const g = new GuardedRouteProvider(
+      provider,
+      { get: boom, set: boom, incr: boom, expire: boom },
+      { dailyLimit: 1, cacheTtlSeconds: 60 },
+    );
+    await g.route(A, B);
+    await g.route(A, B);
+    expect(route).toHaveBeenCalledTimes(2);
   });
 });

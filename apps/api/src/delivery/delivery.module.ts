@@ -27,6 +27,7 @@ import {
   ShareController,
 } from '../safety/safety.controller';
 import { SafetyService } from '../safety/safety.service';
+import { RedisService } from '../common/redis.service';
 import { StorageService } from '../common/storage.service';
 import { ChatController } from './chat.controller';
 import { ChatService } from './chat.service';
@@ -85,7 +86,7 @@ import { SimulatorController } from './simulator.controller';
     },
     {
       provide: ROUTE_PROVIDER,
-      inject: [ConfigService],
+      inject: [ConfigService, RedisService],
       useFactory: createRouteProvider,
     },
   ],

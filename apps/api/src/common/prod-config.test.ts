@@ -15,6 +15,11 @@ describe('assertProductionConfig', () => {
   it('aceita configuração de produção válida', () => {
     expect(() => assertProductionConfig(ok)).not.toThrow();
   });
+  it('com Mapbox exige o teto diário de rotas', () => {
+    const mapbox = { ...ok, ROUTE_PROVIDER: 'mapbox', MAPBOX_ACCESS_TOKEN: 't' };
+    expect(() => assertProductionConfig(mapbox)).toThrow(/ROUTE_DAILY_LIMIT/);
+    expect(() => assertProductionConfig({ ...mapbox, ROUTE_DAILY_LIMIT: '5000' })).not.toThrow();
+  });
   it.each([
     ['senha padrão', { DATABASE_URL: 'postgresql://amma:amma_dev@db/amma' }],
     ['sem Redis', { REDIS_URL: undefined }],

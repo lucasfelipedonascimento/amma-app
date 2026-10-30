@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { haversineMeters, type GeoPoint } from '@amma/shared';
+import { RedisService } from '../common/redis.service';
 
 export interface RouteResult {
   distanceMeters: number;
@@ -133,8 +134,100 @@ export class OsrmRouteProvider implements RouteProvider {
   }
 }
 
+/** Parte do Redis que o controle de gastos usa (facilita testar sem Redis). */
+export interface RouteStore {
+  get(key: string): Promise<string | null>;
+  set(key: string, value: string, mode: 'EX', seconds: number): Promise<unknown>;
+  incr(key: string): Promise<number>;
+  expire(key: string, seconds: number): Promise<unknown>;
+}
+
+export interface RouteGuardOptions {
+  /** Teto de consultas pagas por dia (UTC). 0 = sem teto (só desenvolvimento). */
+  dailyLimit: number;
+  /** Quanto tempo uma rota repetida fica em cache. */
+  cacheTtlSeconds: number;
+  now?: () => Date;
+}
+
+const DAY_SECONDS = 86_400;
+
+/**
+ * Protege o bolso: rota repetida sai do cache (sem custo) e o provedor pago só é chamado até o teto diário.
+ * Acima do teto responde `RouteUnavailableError` (quem chama já trata: cotação 503, ETA da oferta some).
+ * Se o Redis cair, segue sem cache nem teto (disponibilidade primeiro); o limite de verdade fica no painel do provedor.
+ * Só rotas SEM traçado vão para o cache: o traçado do motorista muda a cada posição e quase nunca se repete.
+ */
+export class GuardedRouteProvider implements RouteProvider {
+  private readonly logger = new Logger('Rotas');
+
+  constructor(
+    private readonly inner: RouteProvider,
+    private readonly store: RouteStore,
+    private readonly opts: RouteGuardOptions,
+  ) {}
+
+  async route(origin: GeoPoint, destination: GeoPoint, opts?: RouteOptions): Promise<RouteResult> {
+    const cacheable = !opts?.withPath;
+    // 4 casas decimais ≈ 11 m: pedidos do mesmo endereço caem na mesma chave.
+    const key = `route:v1:${[origin, destination].map((p) => `${p.lat.toFixed(4)},${p.lng.toFixed(4)}`).join('>')}`;
+    if (cacheable) {
+      const hit = await this.store.get(key).catch(() => null);
+      if (hit) {
+        try {
+          return JSON.parse(hit) as RouteResult;
+        } catch {
+          // cache corrompido: consulta de novo
+        }
+      }
+    }
+    await this.spend();
+    const result = await this.inner.route(origin, destination, opts);
+    if (cacheable)
+      await this.store
+        .set(key, JSON.stringify(result), 'EX', this.opts.cacheTtlSeconds)
+        .catch(() => undefined);
+    return result;
+  }
+
+  /** Conta uma consulta paga; recusa quando o teto do dia acabou. */
+  private async spend(): Promise<void> {
+    const { dailyLimit } = this.opts;
+    if (dailyLimit <= 0) return;
+    const day = (this.opts.now?.() ?? new Date()).toISOString().slice(0, 10);
+    const key = `route:spend:${day}`;
+    let used: number;
+    try {
+      used = await this.store.incr(key);
+      if (used === 1) await this.store.expire(key, DAY_SECONDS * 2);
+    } catch (e) {
+      this.logger.warn(`Teto de rotas sem Redis, seguindo sem controle: ${(e as Error).message}`);
+      return;
+    }
+    if (used > dailyLimit) {
+      if (used === dailyLimit + 1)
+        this.logger.error(
+          `Teto diário de rotas (${dailyLimit}) atingido: novas rotas recusadas até amanhã (UTC)`,
+        );
+      throw new RouteUnavailableError('Teto diário de consultas de rota atingido');
+    }
+    if (used === Math.ceil(dailyLimit * 0.8))
+      this.logger.warn(`80% do teto diário de rotas usado (${used}/${dailyLimit})`);
+  }
+}
+
 /** ROUTE_PROVIDER=simulated (padrão) | osrm | mapbox. Simulado e OSRM público são recusados em produção. */
-export function createRouteProvider(config: ConfigService): RouteProvider {
+export function createRouteProvider(config: ConfigService, redis?: RedisService): RouteProvider {
+  const inner = createBaseRouteProvider(config);
+  // Simulado não custa nada: sem cache nem teto.
+  if (!redis || inner instanceof SimulatedRouteProvider) return inner;
+  return new GuardedRouteProvider(inner, redis, {
+    dailyLimit: Number(config.get('ROUTE_DAILY_LIMIT') ?? 0),
+    cacheTtlSeconds: Number(config.get('ROUTE_CACHE_TTL_SECONDS') ?? 3600),
+  });
+}
+
+function createBaseRouteProvider(config: ConfigService): RouteProvider {
   const mode = config.get<string>('ROUTE_PROVIDER') ?? 'simulated';
   if (mode === 'simulated') {
     if (config.get('NODE_ENV') === 'production')

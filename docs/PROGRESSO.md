@@ -446,3 +446,11 @@ Admin do seed `+5583999990001`; sócio `+5583999990003` (o código aparece na te
 - `pnpm audit --prod`: 1 _low_ restante, sem correção publicada.
 - Testes novos: `prod-config.test.ts` (API), `api-url.test.ts` (mobile). Total: 400 de integração, suítes unitárias e de painel/mobile verdes; lint, typecheck e build do painel limpos.
 - **Auditoria concluída.** Pendências finais em `docs/SEGURANCA.md` (consolidado no fim).
+
+## Trocar o simulado pelo real — integração 1: mapas e rotas (2026-10-30)
+
+- O adaptador do Mapbox já existia; faltava proteger o gasto. Novo `GuardedRouteProvider` (em volta do Mapbox/OSRM): **cache** de rotas repetidas (chave com 4 casas decimais ≈ 11 m; só rotas sem traçado) e **teto diário** de consultas pagas (`ROUTE_DAILY_LIMIT`, dia UTC, aviso em 80%, recusa acima do teto com `RouteUnavailableError`, que a cotação traduz em 503 e o ETA da oferta ignora). Redis fora do ar: segue sem cache nem teto.
+- Em produção com `ROUTE_PROVIDER=mapbox` a API só sobe com `ROUTE_DAILY_LIMIT > 0`. Variáveis novas: `ROUTE_DAILY_LIMIT`, `ROUTE_CACHE_TTL_SECONDS`.
+- **Falta (👤 você):** criar a conta Mapbox, gerar um token **só com escopo de Directions** (restrito, nunca commitar), definir o **limite de gastos no painel do Mapbox** (o teto de verdade; o da API é uma segunda trava) e testar com `ROUTE_PROVIDER=mapbox` em desenvolvimento. O Mapbox não tem "sandbox": o modo de teste é o nível gratuito com token próprio. Nada foi chamado com chave real aqui.
+- Fora desta etapa: autocomplete/geocodificação no servidor (hoje é do aparelho) e mapa do app (segue `react-native-maps`).
+- Próximas integrações, uma por vez: Pix/cartão com divisão de pagamento → SMS/WhatsApp para o OTP → parceiro financeiro.
