@@ -20,6 +20,11 @@ describe('assertProductionConfig', () => {
     expect(() => assertProductionConfig(mapbox)).toThrow(/ROUTE_DAILY_LIMIT/);
     expect(() => assertProductionConfig({ ...mapbox, ROUTE_DAILY_LIMIT: '5000' })).not.toThrow();
   });
+  it('provedor de pagamento real exige o segredo do webhook', () => {
+    const real = { ...ok, PAYMENT_PROVIDER: 'asaas' };
+    expect(() => assertProductionConfig(real)).toThrow(/PAYMENT_WEBHOOK_SECRET/);
+    expect(() => assertProductionConfig({ ...real, PAYMENT_WEBHOOK_SECRET: 'x' })).not.toThrow();
+  });
   it.each([
     ['senha padrão', { DATABASE_URL: 'postgresql://amma:amma_dev@db/amma' }],
     ['sem Redis', { REDIS_URL: undefined }],

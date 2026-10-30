@@ -7,7 +7,7 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { PIX_TTL_SECONDS, refundAction, type PaymentMethod } from '@amma/shared';
+import { PIX_TTL_SECONDS, buildPaymentSplit, refundAction, type PaymentMethod } from '@amma/shared';
 import type { Payment } from '@prisma/client';
 import { cancelDelivery } from '../delivery/transitions';
 import { PrismaService } from '../prisma.service';
@@ -15,6 +15,7 @@ import { RealtimeService } from '../realtime/realtime.service';
 import {
   PAYMENT_PROVIDER,
   PaymentUnavailableError,
+  type PaymentEvent,
   type PaymentProvider,
 } from './payment-provider';
 
@@ -138,6 +139,95 @@ export class PaymentsService {
     throw new HttpException('Este Pix já venceu e o pedido foi cancelado', HttpStatus.CONFLICT);
   }
 
+  /**
+   * Trata um aviso do provedor já validado. Idempotente por (provedor, eventId): o provedor reenvia
+   * avisos, e repetir não pode pagar o pedido nem estornar duas vezes.
+   * `justPaid` diz ao chamador para iniciar o despacho.
+   */
+  async handleEvent(e: PaymentEvent): Promise<{ deliveryId?: string; justPaid: boolean }> {
+    try {
+      await this.prisma.paymentWebhookEvent.create({
+        data: { provider: this.provider.name, eventId: e.eventId, type: e.type },
+      });
+    } catch (err) {
+      if ((err as { code?: string }).code === 'P2002') return { justPaid: false };
+      throw err;
+    }
+    try {
+      const r = await this.confirmPix(e.providerRef);
+      return r;
+    } catch (err) {
+      if (err instanceof NotFoundException) {
+        // Pagamento que não conhecemos: registra e responde 200 (reenviar não adianta).
+        this.logger.warn(`Aviso do provedor para cobrança desconhecida ${e.providerRef}`);
+        return { justPaid: false };
+      }
+      if (err instanceof HttpException && err.getStatus() === HttpStatus.CONFLICT) {
+        await this.refundLatePix(e.providerRef);
+        return { justPaid: false };
+      }
+      // Falha nossa: apaga o registro para o provedor poder reenviar e tentarmos de novo.
+      await this.prisma.paymentWebhookEvent
+        .deleteMany({ where: { provider: this.provider.name, eventId: e.eventId } })
+        .catch(() => undefined);
+      throw err;
+    }
+  }
+
+  /** Pix pago depois de vencer (pedido já cancelado): devolve o dinheiro ao cliente. */
+  private async refundLatePix(providerRef: string) {
+    const p = await this.prisma.payment.findUnique({ where: { providerRef } });
+    if (!p || p.status !== 'EXPIRADO') return;
+    const { refundRef } = await this.provider.refund({ providerRef, amountCents: p.amountCents });
+    await this.prisma.payment.updateMany({
+      where: { id: p.id, status: 'EXPIRADO' },
+      data: {
+        status: 'ESTORNADO',
+        paidAt: new Date(),
+        refundedAt: new Date(),
+        refundRef,
+        refundReason: 'PIX_PAGO_APOS_VENCER',
+      },
+    });
+    await this.notifyClient(p.deliveryId, 'ESTORNADO');
+  }
+
+  /**
+   * Repasse depois do ENTREGUE: manda ao provedor a divisão (trabalhador, taxa base, associação) das
+   * taxas congeladas no pedido. Idempotente; não lança (a rotina periódica repete o que falhou).
+   */
+  async settleSplit(deliveryId: string): Promise<boolean> {
+    try {
+      const d = await this.prisma.delivery.findUnique({
+        where: { id: deliveryId },
+        include: { payment: true },
+      });
+      const p = d?.payment;
+      if (!d || !p || d.status !== 'ENTREGUE' || !d.workerId) return false;
+      if (p.status !== 'PAGO' || p.splitSettledAt) return false;
+      const lines = buildPaymentSplit({
+        grossCents: p.amountCents,
+        workerId: d.workerId,
+        workerNetCents: d.workerNetCents ?? 0,
+        platformFeeCents: d.platformFeeCents ?? 0,
+        associationFeeCents: d.associationFeeCents ?? 0,
+      });
+      const { splitRef } = await this.provider.settleSplit({
+        providerRef: p.providerRef,
+        reference: deliveryId,
+        lines,
+      });
+      await this.prisma.payment.updateMany({
+        where: { id: p.id, splitSettledAt: null },
+        data: { splitSettledAt: new Date(), splitRef },
+      });
+      return true;
+    } catch (e) {
+      this.logger.error(`Repasse pendente do pedido ${deliveryId}: ${(e as Error).message}`);
+      return false;
+    }
+  }
+
   /** Depois de um cancelamento: estorna o que foi pago ou invalida o Pix pendente. Não lança. */
   async afterCancel(deliveryId: string) {
     try {
@@ -198,6 +288,13 @@ export class PaymentsService {
       take: 100,
     });
     for (const p of stuck) await this.afterCancel(p.deliveryId);
+
+    const unsettled = await this.prisma.payment.findMany({
+      where: { status: 'PAGO', splitSettledAt: null, delivery: { status: 'ENTREGUE' } },
+      select: { deliveryId: true },
+      take: 100,
+    });
+    for (const p of unsettled) await this.settleSplit(p.deliveryId);
   }
 
   private async expirePix(paymentId: string, deliveryId: string) {

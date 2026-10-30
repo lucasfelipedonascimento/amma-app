@@ -454,3 +454,14 @@ Admin do seed `+5583999990001`; sócio `+5583999990003` (o código aparece na te
 - **Falta (👤 você):** criar a conta Mapbox, gerar um token **só com escopo de Directions** (restrito, nunca commitar), definir o **limite de gastos no painel do Mapbox** (o teto de verdade; o da API é uma segunda trava) e testar com `ROUTE_PROVIDER=mapbox` em desenvolvimento. O Mapbox não tem "sandbox": o modo de teste é o nível gratuito com token próprio. Nada foi chamado com chave real aqui.
 - Fora desta etapa: autocomplete/geocodificação no servidor (hoje é do aparelho) e mapa do app (segue `react-native-maps`).
 - Próximas integrações, uma por vez: Pix/cartão com divisão de pagamento → SMS/WhatsApp para o OTP → parceiro financeiro.
+
+## Trocar o simulado pelo real — integração 2: Pix e cartão com divisão (2026-10-30)
+
+Foco combinado: deixar tudo pronto para conectar o provedor depois (nenhuma chamada real feita).
+
+- `PaymentProvider` ganhou `settleSplit` (repasse ao trabalhador, taxa base e associação, feito **depois do ENTREGUE**, com as taxas congeladas no pedido) e `parseWebhook` (valida assinatura e traduz o aviso). O sandbox implementa os dois (assinatura HMAC no cabeçalho `x-amma-signature`).
+- `buildPaymentSplit` (shared): divisão que obrigatoriamente fecha com o valor cobrado.
+- `POST /payments/webhook` (público, protegido pela assinatura): Pix pago confirma o pagamento e dispara o despacho; aviso repetido é ignorado (`PaymentWebhookEvent`); **Pix pago depois de vencer é estornado sozinho** (pendência antiga resolvida).
+- Repasse que falha não bloqueia a conclusão; a rotina periódica repete. Migração `20261105120000_payment_split_webhook` (rode `prisma:deploy`).
+- Registro de provedores (`REAL_PROVIDERS`) e `PAYMENT_WEBHOOK_SECRET` obrigatório em produção. Passo a passo: `docs/INTEGRACAO_PAGAMENTO.md`.
+- **Falta:** escolher/contratar o provedor, cadastro das subcontas dos motoristas, SDK de cartão no app, chargeback.

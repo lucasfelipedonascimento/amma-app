@@ -250,6 +250,8 @@ describe('segurança da autenticação (Parte 1 da auditoria)', () => {
           'dispatch/rules',
           'share/:token',
           'share/:token/data',
+          // Aviso do provedor de pagamento: a autenticidade vem da assinatura do corpo.
+          'payments/webhook',
         ].sort(),
       );
     });

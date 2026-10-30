@@ -7,7 +7,8 @@ import {
   lastFour,
   parseCardExpiry,
 } from '@amma/shared';
-import { randomUUID } from 'node:crypto';
+import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
+import type { SplitLine } from '@amma/shared';
 
 export interface PixCharge {
   reference: string;
@@ -26,6 +27,25 @@ export type CardResult =
   | { approved: true; providerRef: string; brand: string; last4: string }
   | { approved: false; reason: string };
 
+/** Repasse do valor pago aos destinatários, depois da entrega concluída. */
+export interface SplitRequest {
+  providerRef: string;
+  /** Id do pedido; serve de chave de idempotência no provedor. */
+  reference: string;
+  lines: SplitLine[];
+}
+
+/** Aviso do provedor (webhook) já validado e traduzido para o nosso vocabulário. */
+export interface PaymentEvent {
+  /** Id único do aviso no provedor, para ignorar reenvios. */
+  eventId: string;
+  type: 'PIX_PAID';
+  providerRef: string;
+}
+
+/** Assinatura ausente ou errada: o aviso NÃO veio do provedor. */
+export class InvalidWebhookError extends Error {}
+
 /** Falha do provedor (fora do ar, timeout). Diferente de recusa: o cliente pode tentar de novo. */
 export class PaymentUnavailableError extends Error {}
 
@@ -40,6 +60,21 @@ export interface PaymentProvider {
   createPix(c: PixCharge): Promise<{ providerRef: string; pixCode: string }>;
   chargeCard(c: CardCharge): Promise<CardResult>;
   refund(i: { providerRef: string; amountCents: number }): Promise<{ refundRef: string }>;
+  /**
+   * Repassa o valor pago: trabalhador, taxa base e taxa da associação. Chamado uma vez por pedido,
+   * depois do ENTREGUE (só aí se sabe quem é o motorista e qual taxa vale). TEM de ser idempotente
+   * por `reference`. Provedor sem divisão nativa pode registrar o repasse e liquidar por fora.
+   */
+  settleSplit(r: SplitRequest): Promise<{ splitRef: string }>;
+  /**
+   * Valida a assinatura do aviso e o traduz. Lança `InvalidWebhookError` se a assinatura não bate.
+   * Devolve `null` para avisos que não interessam (a API responde 200 e ignora).
+   * `rawBody` são os bytes EXATOS recebidos: a assinatura é calculada sobre eles.
+   */
+  parseWebhook(
+    rawBody: Buffer,
+    headers: Record<string, string | string[] | undefined>,
+  ): PaymentEvent | null;
 }
 
 export const PAYMENT_PROVIDER = Symbol('PAYMENT_PROVIDER');
@@ -64,6 +99,37 @@ export class SandboxPaymentProvider implements PaymentProvider {
   readonly name = 'sandbox';
   readonly sandbox = true;
   private readonly refunds = new Map<string, string>();
+  private readonly splits = new Map<string, string>();
+
+  constructor(private readonly webhookSecret = 'segredo-webhook-sandbox') {}
+
+  /** Assinatura que o sandbox espera no cabeçalho `x-amma-signature` (HMAC-SHA256 em hexadecimal). */
+  sign(rawBody: Buffer | string): string {
+    return createHmac('sha256', this.webhookSecret).update(rawBody).digest('hex');
+  }
+
+  async settleSplit(r: SplitRequest) {
+    const existing = this.splits.get(r.reference);
+    if (existing) return { splitRef: existing };
+    const splitRef = `split_sbx_${randomUUID()}`;
+    this.splits.set(r.reference, splitRef);
+    return { splitRef };
+  }
+
+  parseWebhook(rawBody: Buffer, headers: Record<string, string | string[] | undefined>) {
+    const got = String(headers['x-amma-signature'] ?? '');
+    const want = this.sign(rawBody);
+    if (got.length !== want.length || !timingSafeEqual(Buffer.from(got), Buffer.from(want)))
+      throw new InvalidWebhookError('Assinatura inválida');
+    let body: { id?: string; type?: string; providerRef?: string };
+    try {
+      body = JSON.parse(rawBody.toString('utf8'));
+    } catch {
+      throw new InvalidWebhookError('Corpo inválido');
+    }
+    if (body.type !== 'pix.paid' || !body.id || !body.providerRef) return null;
+    return { eventId: body.id, type: 'PIX_PAID' as const, providerRef: body.providerRef };
+  }
 
   async createPix(c: PixCharge) {
     const providerRef = `pix_sbx_${randomUUID()}`;
@@ -118,6 +184,13 @@ export class SandboxPaymentProvider implements PaymentProvider {
   }
 }
 
+/**
+ * Provedores disponíveis por `PAYMENT_PROVIDER`. Para ligar um provedor real: implemente `PaymentProvider`
+ * num arquivo novo (ex.: `asaas-provider.ts`), registre aqui e siga docs/INTEGRACAO_PAGAMENTO.md.
+ * Cada fábrica recebe a configuração e valida as próprias chaves (falhando no boot se faltar).
+ */
+const REAL_PROVIDERS: Record<string, (config: ConfigService) => PaymentProvider> = {};
+
 export function createPaymentProvider(config: ConfigService): PaymentProvider {
   const mode = config.get<string>('PAYMENT_PROVIDER') ?? 'sandbox';
   if (mode === 'sandbox') {
@@ -126,8 +199,12 @@ export function createPaymentProvider(config: ConfigService): PaymentProvider {
     new Logger('Pagamentos').warn(
       'Usando provedor de pagamento SIMULADO (PAYMENT_PROVIDER=sandbox)',
     );
-    return new SandboxPaymentProvider();
+    return new SandboxPaymentProvider(config.get<string>('PAYMENT_WEBHOOK_SECRET') || undefined);
   }
-  // Nenhum provedor real foi contratado: não inventar integração (ver docs/DECISOES.md).
-  throw new Error(`PAYMENT_PROVIDER inválido: ${mode}`);
+  const factory = REAL_PROVIDERS[mode];
+  if (!factory) {
+    const known = ['sandbox', ...Object.keys(REAL_PROVIDERS)].join(' | ');
+    throw new Error(`PAYMENT_PROVIDER inválido: ${mode} (disponíveis: ${known})`);
+  }
+  return factory(config);
 }

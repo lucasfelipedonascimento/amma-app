@@ -45,7 +45,7 @@ export class TestApp {
 
   static async start() {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
-    const app = moduleRef.createNestApplication();
+    const app = moduleRef.createNestApplication({ rawBody: true });
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }));
     app.useWebSocketAdapter(new WsAdapter(app));
     await app.listen(0, '127.0.0.1');

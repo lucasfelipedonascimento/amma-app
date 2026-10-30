@@ -11,7 +11,10 @@ import { setupSwagger } from './common/swagger';
 
 async function bootstrap() {
   assertProductionConfig(process.env);
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    // Bytes originais do corpo: a assinatura do webhook de pagamento é calculada sobre eles.
+    rawBody: true,
+  });
   // Atrás de proxy/balanceador, TRUST_PROXY (nº de proxies, ex.: 1) faz o limite de taxa usar o IP real.
   if (process.env.TRUST_PROXY) app.set('trust proxy', Number(process.env.TRUST_PROXY));
   app.use(securityHeaders(process.env.NODE_ENV === 'production'));

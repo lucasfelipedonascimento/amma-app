@@ -11,7 +11,7 @@ import { DriverService } from '../driver/driver.service';
 import { LedgerService } from '../ledger/ledger.service';
 import { MunicipalRulesService } from '../municipal/municipal-rules.service';
 import { PAYMENT_PROVIDER, createPaymentProvider } from '../payments/payment-provider';
-import { PaymentsController } from '../payments/payments.controller';
+import { PaymentsController, PaymentsWebhookController } from '../payments/payments.controller';
 import { PaymentsService } from '../payments/payments.service';
 import { PositionStore } from '../presence/position-store';
 import { PresenceService } from '../presence/presence.service';
@@ -48,6 +48,7 @@ import { SimulatorController } from './simulator.controller';
     SimulatorController,
     DispatchController,
     PaymentsController,
+    PaymentsWebhookController,
     RidesController,
     SafetyController,
     ShareController,

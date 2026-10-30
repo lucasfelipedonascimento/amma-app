@@ -8,7 +8,10 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Headers,
+  RawBodyRequest,
   Req,
+  UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
 import { PAYMENT_METHODS } from '@amma/shared';
@@ -17,7 +20,8 @@ import { Roles, RolesGuard } from '../auth/roles';
 import { DispatchService } from '../dispatch/dispatch.service';
 import { PrismaService } from '../prisma.service';
 import { SandboxCardDto } from './dto';
-import { SandboxPaymentProvider } from './payment-provider';
+import { Public } from '../auth/public';
+import { InvalidWebhookError, SandboxPaymentProvider } from './payment-provider';
 import { PaymentsService } from './payments.service';
 
 type Req_ = { user: AuthUser };
@@ -71,5 +75,40 @@ export class PaymentsController {
     // Pago: agora o pedido pode ir para o despacho.
     if (r.justPaid) await this.dispatch.dispatch(deliveryId).catch(() => undefined);
     return { deliveryId, status: 'PAGO' };
+  }
+}
+
+/**
+ * Aviso do provedor de pagamento (webhook). Aberto de propósito (o provedor não tem login): a
+ * autenticidade vem da ASSINATURA do corpo, conferida pelo provedor (`parseWebhook`). Sem assinatura
+ * válida: 401, sem tocar em nada.
+ */
+@Controller('payments')
+@Public()
+export class PaymentsWebhookController {
+  constructor(
+    private readonly payments: PaymentsService,
+    private readonly dispatch: DispatchService,
+  ) {}
+
+  @Post('webhook')
+  @HttpCode(200)
+  async receive(
+    @Req() req: RawBodyRequest<unknown>,
+    @Headers() headers: Record<string, string | string[] | undefined>,
+  ) {
+    if (!req.rawBody) throw new BadRequestException('Corpo ausente');
+    let event;
+    try {
+      event = this.payments.provider.parseWebhook(req.rawBody, headers);
+    } catch (e) {
+      if (e instanceof InvalidWebhookError) throw new UnauthorizedException();
+      throw e;
+    }
+    if (!event) return { received: true };
+    const r = await this.payments.handleEvent(event);
+    if (r.justPaid && r.deliveryId)
+      await this.dispatch.dispatch(r.deliveryId).catch(() => undefined);
+    return { received: true };
   }
 }

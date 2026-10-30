@@ -462,6 +462,8 @@ export class DeliveryService {
     });
     if (!ok) throw new ConflictException('O pedido mudou de estado; tente novamente');
     this.notify(d, to);
+    // Repasse ao motorista e às taxas; se falhar, a rotina periódica repete (não bloqueia a conclusão).
+    if (to === 'ENTREGUE') await this.payments.settleSplit(id);
     const fresh = await this.prisma.delivery.findUniqueOrThrow({ where: { id } });
     return deliveryView(fresh, 'MOTORISTA', undefined, await this.extrasFor(fresh));
   }

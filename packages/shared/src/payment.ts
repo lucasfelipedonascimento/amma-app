@@ -113,3 +113,38 @@ export const lastFour = (input: string): string => digitsOf(input).slice(-4);
 
 /** Valor mínimo cobrável (centavos). Abaixo disso os provedores recusam. */
 export const MIN_CHARGE_CENTS: Cents = 100;
+
+export type SplitRecipient = 'WORKER' | 'PLATFORM' | 'ASSOCIATION';
+
+export interface SplitLine {
+  recipient: SplitRecipient;
+  amountCents: Cents;
+  /** Só em `WORKER`: quem recebe. Os outros destinatários são contas fixas da AMMA no provedor. */
+  workerId?: string;
+}
+
+/**
+ * Divisão do valor pago entre trabalhador, taxa base e taxa da associação, a partir das taxas já
+ * congeladas no pedido (as mesmas do ledger). Linhas de valor zero são omitidas. Lança se a soma
+ * não fechar com o valor cobrado: nunca repassar um valor diferente do que entrou.
+ */
+export function buildPaymentSplit(i: {
+  grossCents: Cents;
+  workerId: string;
+  workerNetCents: Cents;
+  platformFeeCents: Cents;
+  associationFeeCents: Cents;
+}): SplitLine[] {
+  const lines: SplitLine[] = [
+    { recipient: 'WORKER', workerId: i.workerId, amountCents: i.workerNetCents },
+    { recipient: 'PLATFORM', amountCents: i.platformFeeCents },
+    { recipient: 'ASSOCIATION', amountCents: i.associationFeeCents },
+  ];
+  const total = lines.reduce((s, l) => s + l.amountCents, 0);
+  if (
+    lines.some((l) => !Number.isInteger(l.amountCents) || l.amountCents < 0) ||
+    total !== i.grossCents
+  )
+    throw new Error(`Divisão não fecha: ${total} ≠ ${i.grossCents}`);
+  return lines.filter((l) => l.amountCents > 0);
+}

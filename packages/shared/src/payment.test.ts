@@ -1,5 +1,7 @@
+import { calculateRideFees } from './fees';
 import { describe, expect, it } from 'vitest';
 import {
+  buildPaymentSplit,
   canDispatch,
   canTransitionPayment,
   cardBrand,
@@ -82,4 +84,46 @@ describe('cartão', () => {
     expect(isValidCardCvv('123', 'amex')).toBe(false);
   });
   it('lastFour', () => expect(lastFour('4242 4242 4242 4242')).toBe('4242'));
+});
+
+describe('buildPaymentSplit', () => {
+  const base = { workerId: 'w1' };
+  it('divide como o ledger e a soma fecha com o valor cobrado', () => {
+    const fees = calculateRideFees(1100, 2);
+    const lines = buildPaymentSplit({
+      ...base,
+      grossCents: 1100,
+      workerNetCents: fees.workerNetCents,
+      platformFeeCents: fees.platformFeeCents,
+      associationFeeCents: fees.associationFeeCents,
+    });
+    expect(lines).toEqual([
+      { recipient: 'WORKER', workerId: 'w1', amountCents: 968 },
+      { recipient: 'PLATFORM', amountCents: 110 },
+      { recipient: 'ASSOCIATION', amountCents: 22 },
+    ]);
+  });
+  it('omite a associação quando a taxa é 0', () => {
+    const lines = buildPaymentSplit({
+      ...base,
+      grossCents: 1000,
+      workerNetCents: 900,
+      platformFeeCents: 100,
+      associationFeeCents: 0,
+    });
+    expect(lines.map((l) => l.recipient)).toEqual(['WORKER', 'PLATFORM']);
+  });
+  it('recusa divisão que não fecha ou com valor negativo', () => {
+    const bad = {
+      ...base,
+      grossCents: 1000,
+      workerNetCents: 900,
+      platformFeeCents: 90,
+      associationFeeCents: 0,
+    };
+    expect(() => buildPaymentSplit(bad)).toThrow(/não fecha/);
+    expect(() =>
+      buildPaymentSplit({ ...bad, workerNetCents: 1100, platformFeeCents: -100 }),
+    ).toThrow();
+  });
 });
